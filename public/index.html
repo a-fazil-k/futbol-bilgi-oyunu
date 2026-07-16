@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>⚽ Futbol Bilgi Düellosu</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="stadium-glow"></div>
+
+<!-- ============ EKRAN 1: GİRİŞ ============ -->
+<section id="screen-login" class="screen active">
+  <div class="card login-card">
+    <h1 class="logo">⚽ FUTBOL <span class="accent">DÜELLOSU</span></h1>
+    <p class="subtitle">Kulüp + Ülke &rarr; Doğru futbolcuyu rakibinden önce bul.</p>
+    <input id="username-input" type="text" maxlength="20" placeholder="Kullanıcı adın..." autocomplete="off" />
+    <button id="btn-join-lobby" class="btn-primary">LOBİYE GİR</button>
+    <p id="login-error" class="error-text"></p>
+  </div>
+</section>
+
+<!-- ============ EKRAN 2: LOBİ / EŞLEŞME BEKLENİYOR ============ -->
+<section id="screen-lobby" class="screen">
+  <div class="card">
+    <div class="spinner"></div>
+    <h2>Rakip aranıyor...</h2>
+    <p class="subtitle">Eşleşme sağlandığında oyun otomatik başlayacak.</p>
+  </div>
+</section>
+
+<!-- ============ EKRAN 3: OYUN ============ -->
+<section id="screen-game" class="screen">
+  <header class="topbar">
+    <div class="round-indicator">TUR <span id="round-num">1</span> / <span id="round-total">5</span></div>
+    <div id="timer" class="timer">10</div>
+    <div class="scoreboard">
+      <div class="score-box me">
+        <span class="score-name" id="me-name">Sen</span>
+        <span class="score-val" id="me-score">0</span>
+      </div>
+      <span class="vs">VS</span>
+      <div class="score-box opp">
+        <span class="score-name" id="opp-name">Rakip</span>
+        <span class="score-val" id="opp-score">0</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="game-main">
+
+    <!-- Seçim aşaması -->
+    <div id="phase-selecting" class="phase-panel">
+      <h2 id="select-role-label">Bir KULÜP seç</h2>
+      <div class="autocomplete-wrap">
+        <input id="select-input" type="text" placeholder="Yazmaya başla..." autocomplete="off" />
+        <div id="select-dropdown" class="dropdown"></div>
+      </div>
+      <button id="btn-submit-criteria" class="btn-primary" disabled>GÖNDER</button>
+      <p id="select-status" class="status-text"></p>
+    </div>
+
+    <!-- Tahmin aşaması -->
+    <div id="phase-guessing" class="phase-panel hidden">
+      <div class="criteria-reveal">
+        <div class="criteria-chip club-chip">🛡️ <span id="reveal-club">-</span></div>
+        <div class="criteria-plus">+</div>
+        <div class="criteria-chip country-chip">🌍 <span id="reveal-country">-</span></div>
+      </div>
+      <h2>Bu kriterlere uyan futbolcuyu yaz!</h2>
+      <div class="autocomplete-wrap">
+        <input id="guess-input" type="text" placeholder="Futbolcu adı..." autocomplete="off" />
+        <div id="guess-dropdown" class="dropdown"></div>
+      </div>
+      <button id="btn-submit-guess" class="btn-primary">GÖNDER</button>
+      <p id="guess-status" class="status-text"></p>
+    </div>
+
+    <!-- Tur arası sonuç -->
+    <div id="phase-result" class="phase-panel hidden">
+      <div id="result-box" class="result-box"></div>
+    </div>
+
+  </main>
+</section>
+
+<!-- ============ EKRAN 4: OYUN SONU ============ -->
+<section id="screen-gameover" class="screen">
+  <div class="card">
+    <h2 id="final-title">Oyun Bitti</h2>
+    <div class="final-scores" id="final-scores"></div>
+    <button id="btn-play-again" class="btn-primary">TEKRAR OYNA</button>
+  </div>
+</section>
+
+<!-- Rakip ayrıldı bildirimi -->
+<div id="toast-opponent-left" class="toast hidden">
+  Rakip oyundan ayrıldı. Lobiye dönülüyor...
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
