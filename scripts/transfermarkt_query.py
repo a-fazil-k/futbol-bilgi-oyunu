@@ -9,13 +9,19 @@ Examples:
     python scripts/transfermarkt_query.py player "Cristiano Ronaldo"
     python scripts/transfermarkt_query.py club "Barcelona"
     python scripts/transfermarkt_query.py club "Barcelona" --season 2020
+    python scripts/transfermarkt_query.py leagues
+    python scripts/transfermarkt_query.py league "Süper Lig" --start-season 2017 --end-season 2026
+    python scripts/transfermarkt_query.py big-five --start-season 1997 --end-season 2026
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+from pathlib import Path
 import re
 import sys
 from typing import Optional
+import unicodedata
 
 try:
     import requests
@@ -33,6 +39,8 @@ HEADERS = {
     )
 }
 TIMEOUT_SECONDS = 20
+LEAGUES_FILE = Path(__file__).resolve().parents[1] / "db" / "transfermarkt-leagues.json"
+BIG_FIVE_LEAGUE_NAMES = ("Premier League", "LaLiga", "Bundesliga", "Serie A", "Ligue 1")
 
 # Transfermarkt abbreviates some team names. Extend this map for your database.
 CLUB_ALIASES = {
@@ -73,6 +81,48 @@ def _unique(values: list[str]) -> list[str]:
 
 def _normalize_club(name: str) -> str:
     return CLUB_ALIASES.get(name.strip(), name.strip())
+
+
+def _clean_competition_club(name: str) -> str:
+    return re.sub(r"\s*\(-\s*\d{4}\)\s*$", "", name).strip()
+
+
+def _normalize_lookup(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value.casefold().strip())
+    return "".join(character for character in normalized if not unicodedata.combining(character))
+
+
+def load_leagues(leagues_file: Path = LEAGUES_FILE) -> dict[str, str]:
+    """Load the league-name to Transfermarkt-code catalog."""
+    try:
+        data = json.loads(leagues_file.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise ValueError(f"League catalog could not be read: {leagues_file}") from error
+
+    if not isinstance(data, dict) or not data:
+        raise ValueError(f"League catalog must be a non-empty JSON object: {leagues_file}")
+    if not all(isinstance(name, str) and isinstance(code, str) for name, code in data.items()):
+        raise ValueError("Every league catalog entry must contain a string name and code")
+
+    normalized_names = [_normalize_lookup(name) for name in data]
+    if len(normalized_names) != len(set(normalized_names)):
+        raise ValueError("League catalog contains ambiguous names after normalization")
+    return data
+
+
+def resolve_league(league_name: str, leagues_file: Path = LEAGUES_FILE) -> tuple[str, str]:
+    """Resolve a user-provided league name from the JSON catalog."""
+    leagues = load_leagues(leagues_file)
+    requested = _normalize_lookup(league_name)
+    for name, code in leagues.items():
+        if _normalize_lookup(name) == requested:
+            return name, code
+
+    available = ", ".join(leagues)
+    raise ValueError(
+        f"League '{league_name}' was not found in {leagues_file.name}. "
+        f"Available leagues: {available}"
+    )
 
 
 def _best_match(results: list[dict], query: str, item_type: str) -> dict:
@@ -193,6 +243,75 @@ def get_players_by_club(club_query: str, season: Optional[int] = None) -> list[s
     return _unique([name.strip() for name in names])
 
 
+def get_competition_clubs(competition_id: str, season: int, client=session) -> dict[str, str]:
+    """Return {Transfermarkt club ID: club name} for one competition season."""
+    response = client.get(
+        f"{BASE_URL}/-/startseite/wettbewerb/{competition_id}/plus/",
+        params={"saison_id": season},
+        timeout=TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    tree = html.fromstring(response.content)
+    links = tree.xpath(
+        "//td[contains(@class,'hauptlink') and contains(@class,'no-border-links')]"
+        "//a[contains(@href,'/verein/')][1]"
+    )
+
+    clubs = {}
+    for link in links:
+        club_id = _id_from_url(link.get("href", ""), "verein")
+        name = _clean_competition_club(link.get("title") or link.text_content())
+        if club_id and name:
+            clubs[club_id] = name
+    if not 8 <= len(clubs) <= 32:
+        raise ValueError(
+            f"Unexpected club count for {competition_id}, season {season}: {len(clubs)}"
+        )
+    return clubs
+
+
+def _get_league_history(competition_id: str, start_season: int, end_season: int) -> list[str]:
+    client = requests.Session()
+    client.headers.update(HEADERS)
+    clubs_by_id = {}
+    try:
+        for season in range(start_season, end_season + 1):
+            clubs_by_id.update(get_competition_clubs(competition_id, season, client))
+    finally:
+        client.close()
+    return sorted(clubs_by_id.values(), key=str.casefold)
+
+
+def get_league_clubs(league_name: str, start_season: int, end_season: int) -> dict[str, list[str]]:
+    """Resolve a league name from JSON and return its unique clubs over a season range."""
+    if start_season > end_season:
+        raise ValueError("start_season cannot be later than end_season")
+    canonical_name, competition_id = resolve_league(league_name)
+    clubs = _get_league_history(competition_id, start_season, end_season)
+    return {canonical_name: clubs}
+
+
+def get_big_five_clubs(start_season: int, end_season: int) -> dict[str, list[str]]:
+    """Return unique clubs from the Big Five leagues over an inclusive season range."""
+    if start_season > end_season:
+        raise ValueError("start_season cannot be later than end_season")
+
+    league_catalog = load_leagues()
+    leagues = {name: league_catalog[name] for name in BIG_FIVE_LEAGUE_NAMES}
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(leagues)) as executor:
+        futures = {
+            executor.submit(_get_league_history, competition_id, start_season, end_season): league_name
+            for league_name, competition_id in leagues.items()
+        }
+        for future in as_completed(futures):
+            league_name = futures[future]
+            results[league_name] = future.result()
+            print(f"{league_name}: {len(results[league_name])} clubs", file=sys.stderr)
+
+    return {league_name: results[league_name] for league_name in leagues}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -208,15 +327,40 @@ def main() -> None:
     club.add_argument("query")
     club.add_argument("--season", type=int, help="Season start year, for example 2020")
 
+    commands.add_parser("leagues", help="List available league names and Transfermarkt codes")
+
+    league = commands.add_parser("league", help="Get clubs by a league name from the JSON catalog")
+    league.add_argument("name", help='League name from the catalog, for example "Süper Lig"')
+    league.add_argument("--start-season", type=int, required=True)
+    league.add_argument("--end-season", type=int, required=True)
+    league.add_argument("--output", help="Write JSON to this file instead of stdout")
+
+    big_five = commands.add_parser("big-five", help="Get unique Big Five clubs over a season range")
+    big_five.add_argument("--start-season", type=int, default=1997)
+    big_five.add_argument("--end-season", type=int, default=2026)
+    big_five.add_argument("--output", help="Write JSON to this file instead of stdout")
+
     args = parser.parse_args()
     try:
         if args.command == "search-player":
             output = [player["name"] for player in search_players(args.query)]
         elif args.command == "player":
             output = get_player(args.query, include_youth=not args.senior_only)
-        else:
+        elif args.command == "club":
             output = get_players_by_club(args.query, args.season)
-        print(json.dumps(output, ensure_ascii=False, indent=2))
+        elif args.command == "leagues":
+            output = load_leagues()
+        elif args.command == "league":
+            output = get_league_clubs(args.name, args.start_season, args.end_season)
+        else:
+            output = get_big_five_clubs(args.start_season, args.end_season)
+
+        serialized = json.dumps(output, ensure_ascii=False, indent=2)
+        if getattr(args, "output", None):
+            with open(args.output, "w", encoding="utf-8") as output_file:
+                output_file.write(serialized + "\n")
+        else:
+            print(serialized)
     except (requests.RequestException, LookupError, ValueError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         raise SystemExit(1)
