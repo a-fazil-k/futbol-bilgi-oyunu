@@ -1,9 +1,24 @@
 const socket = io();
 
 // ---------------------------------------------------------------------------
+// Appwrite Init & Auth
+// ---------------------------------------------------------------------------
+const appwriteClient = new Appwrite.Client();
+appwriteClient
+    .setEndpoint('https://fra.cloud.appwrite.io/v1')
+    .setProject('6ab635d20002717b9c3f');
+
+const account = new Appwrite.Account(appwriteClient);
+const databases = new Appwrite.Databases(appwriteClient);
+
+const DB_ID = '6ab67acd00393caac3e0';
+const COL_ID = '6ab67b1e00024e743b26';
+
+// ---------------------------------------------------------------------------
 // Ekran yönetimi
 // ---------------------------------------------------------------------------
 const screens = {
+  auth: document.getElementById("screen-auth"),
   login: document.getElementById("screen-login"),
   lobby: document.getElementById("screen-lobby"),
   roomcode: document.getElementById("screen-room-code"),
@@ -11,8 +26,10 @@ const screens = {
   gameover: document.getElementById("screen-gameover"),
 };
 function showScreen(name) {
-  Object.values(screens).forEach((s) => s.classList.remove("active"));
-  screens[name].classList.add("active");
+  Object.values(screens).forEach((s) => {
+    if(s) s.classList.remove("active");
+  });
+  if(screens[name]) screens[name].classList.add("active");
 }
 
 let myUsername = "";
@@ -22,7 +39,143 @@ let selectedMode = "country_club"; // giris ekraninda secili mod (pill)
 let countdownInterval = null;
 
 // ---------------------------------------------------------------------------
-// EKRAN 1: Giriş
+// EKRAN 0: Auth İşlemleri
+// ---------------------------------------------------------------------------
+const tabLogin = document.getElementById("tab-login");
+const tabRegister = document.getElementById("tab-register");
+const formLogin = document.getElementById("form-login");
+const formRegister = document.getElementById("form-register");
+const authError = document.getElementById("auth-error");
+
+tabLogin.addEventListener("click", () => {
+  tabLogin.classList.add("active");
+  tabRegister.classList.remove("active");
+  formLogin.classList.remove("hidden");
+  formRegister.classList.add("hidden");
+  authError.textContent = "";
+});
+
+tabRegister.addEventListener("click", () => {
+  tabRegister.classList.add("active");
+  tabLogin.classList.remove("active");
+  formRegister.classList.remove("hidden");
+  formLogin.classList.add("hidden");
+  authError.textContent = "";
+});
+
+// Oturum kontrolü
+async function checkSession() {
+  try {
+    const user = await account.get();
+    // Kullanıcının ismini (username olarak kaydetmiştik) veya veritabanından username'i alalım.
+    // Şimdilik Appwrite name alanında tuttuğumuzu varsayıyoruz, 
+    // veya veritabanından çekebiliriz. Biz en kolayı account name'i kullanalım.
+    // Eğer name boşsa veritabanından getirebiliriz.
+    
+    // Veritabanından username sorgulama:
+    const docs = await databases.listDocuments(DB_ID, COL_ID, [
+      Appwrite.Query.equal("userID", user.$id)
+    ]);
+    
+    if (docs.documents.length > 0) {
+      myUsername = docs.documents[0].username;
+    } else {
+      myUsername = user.name;
+    }
+    
+    // Lobby'e (screen-login) geç
+    usernameInput.value = myUsername;
+    usernameInput.disabled = true; // Artık değiştiremesin
+    showScreen("login");
+  } catch (err) {
+    // Oturum yok, auth ekranında kal
+    showScreen("auth");
+  }
+}
+
+// Kayıt Ol
+formRegister.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("reg-email").value.trim();
+  const username = document.getElementById("reg-username").value.trim();
+  const pass = document.getElementById("reg-password").value;
+  const passConfirm = document.getElementById("reg-password-confirm").value;
+
+  if (pass !== passConfirm) {
+    return authError.textContent = "Şifreler eşleşmiyor!";
+  }
+
+  try {
+    authError.textContent = "Kullanıcı adı kontrol ediliyor...";
+    // Kullanıcı adı alınmış mı kontrol et
+    const existing = await databases.listDocuments(DB_ID, COL_ID, [
+      Appwrite.Query.equal("username", username)
+    ]);
+    if (existing.documents.length > 0) {
+      return authError.textContent = "Bu kullanıcı adı zaten alınmış!";
+    }
+
+    authError.textContent = "Kayıt olunuyor...";
+    const user = await account.create(Appwrite.ID.unique(), email, pass, username);
+    
+    // Veritabanına yaz
+    await databases.createDocument(DB_ID, COL_ID, Appwrite.ID.unique(), {
+      userID: user.$id,
+      username: username,
+      eMail: email // Kullanıcının oluşturduğu eMail büyük M ile
+    });
+
+    authError.textContent = "Kayıt başarılı, giriş yapılıyor...";
+    await account.createEmailPasswordSession(email, pass);
+    checkSession();
+
+  } catch (err) {
+    console.error(err);
+    if (err.message.includes("already exists")) {
+      authError.textContent = "Bu mail zaten mevcut, lütfen giriş yapın.";
+    } else {
+      authError.textContent = err.message || "Kayıt olurken bir hata oluştu.";
+    }
+  }
+});
+
+// Giriş Yap
+formLogin.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const username = document.getElementById("login-username").value.trim();
+  const pass = document.getElementById("login-password").value;
+
+  try {
+    authError.textContent = "Kullanıcı aranıyor...";
+    // Username ile DB'den email bul
+    const docs = await databases.listDocuments(DB_ID, COL_ID, [
+      Appwrite.Query.equal("username", username)
+    ]);
+    
+    if (docs.documents.length === 0) {
+      return authError.textContent = "Bu kullanıcı adına sahip bir hesap bulunamadı.";
+    }
+    
+    const email = docs.documents[0].eMail || docs.documents[0].email; // Fallback in case they fix it
+    authError.textContent = "Giriş yapılıyor...";
+    await account.createEmailPasswordSession(email, pass);
+    checkSession();
+  } catch (err) {
+    console.error(err);
+    authError.textContent = "Hatalı şifre veya giriş başarısız.";
+  }
+});
+
+// Google Login
+document.getElementById("btn-google-login").addEventListener("click", () => {
+  account.createOAuth2Session('google', window.location.href, window.location.href);
+});
+
+// Uygulama açılışında session kontrolü
+checkSession();
+
+// ---------------------------------------------------------------------------
+// EKRAN 1: Giriş / Lobi (Mod Seçimi)
 // ---------------------------------------------------------------------------
 const usernameInput = document.getElementById("username-input");
 const loginError = document.getElementById("login-error");

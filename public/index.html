@@ -10,8 +10,42 @@
 
 <div class="stadium-glow"></div>
 
+<!-- ============ EKRAN 0: AUTH ============ -->
+<section id="screen-auth" class="screen active">
+  <div class="card auth-card">
+    <h1 class="logo">⚽ FUTBOL <span class="accent">DÜELLOSU</span></h1>
+    <p class="subtitle" id="auth-subtitle">Giriş yap veya yeni hesap oluştur.</p>
+    
+    <div class="auth-tabs mode-pills">
+      <button type="button" id="tab-login" class="mode-pill active">Giriş Yap</button>
+      <button type="button" id="tab-register" class="mode-pill">Kayıt Ol</button>
+    </div>
+
+    <!-- Login Form -->
+    <form id="form-login" class="auth-form">
+      <input id="login-username" type="text" placeholder="Kullanıcı Adı" autocomplete="username" required />
+      <input id="login-password" type="password" placeholder="Şifre" autocomplete="current-password" required />
+      <button type="submit" id="btn-login" class="btn-primary">GİRİŞ YAP</button>
+    </form>
+
+    <!-- Register Form -->
+    <form id="form-register" class="auth-form hidden">
+      <input id="reg-email" type="email" placeholder="E-posta Adresi" autocomplete="email" required />
+      <input id="reg-username" type="text" maxlength="20" placeholder="Kullanıcı Adı" autocomplete="off" required />
+      <input id="reg-password" type="password" placeholder="Şifre" autocomplete="new-password" required />
+      <input id="reg-password-confirm" type="password" placeholder="Şifre (Tekrar)" autocomplete="new-password" required />
+      <button type="submit" id="btn-register" class="btn-primary">KAYIT OL</button>
+    </form>
+
+    <div class="divider"><span>veya</span></div>
+    <button type="button" id="btn-google-login" class="btn-secondary">🔵 Google ile Giriş Yap</button>
+
+    <p id="auth-error" class="error-text"></p>
+  </div>
+</section>
+
 <!-- ============ EKRAN 1: GİRİŞ ============ -->
-<section id="screen-login" class="screen active">
+<section id="screen-login" class="screen">
   <div class="card login-card">
     <h1 class="logo">⚽ FUTBOL <span class="accent">DÜELLOSU</span></h1>
     <p class="subtitle">Bir mod seç, doğru futbolcuyu rakibinden önce bul.</p>
@@ -126,6 +160,7 @@
   Rakip oyundan ayrıldı. Lobiye dönülüyor...
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/appwrite@16.0.2"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="app.js"></script>
 </body>

@@ -80,7 +80,7 @@ body {
 
 .subtitle { color: var(--text-dim); font-size: 14px; margin-bottom: 24px; }
 
-input[type="text"] {
+input[type="text"], input[type="password"], input[type="email"] {
   width: 100%;
   padding: 14px 16px;
   border-radius: 10px;
@@ -92,7 +92,7 @@ input[type="text"] {
   margin-bottom: 14px;
   transition: border-color .15s, box-shadow .15s;
 }
-input[type="text"]:focus {
+input[type="text"]:focus, input[type="password"]:focus, input[type="email"]:focus {
   border-color: var(--neon);
   box-shadow: 0 0 0 3px rgba(57,255,106,0.15);
 }
