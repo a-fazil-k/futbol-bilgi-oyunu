@@ -1,0 +1,116 @@
+{
+  "metadata": {
+    "sourceRepository": "https://github.com/felipeall/transfermarkt-api",
+    "sourceCommit": "bee4c49628b60f64d99137a675179ff2e6e843b4",
+    "retrievedOn": "2026-09-25",
+    "method": "TransfermarktPlayerSearch and TransfermarktPlayerTransfers",
+    "notes": [
+      "careerClubs contains normalized parent-club names suitable for the game database.",
+      "allTeams contains Transfermarkt's exact youth, reserve, and senior team names in chronological order.",
+      "The Transfermarkt placeholder 'Without Club' is not a club and was excluded."
+    ]
+  },
+  "players": [
+    {
+      "id": "8198",
+      "name": "Cristiano Ronaldo",
+      "careerClubs": [
+        "CF Andorinha",
+        "CD Nacional",
+        "Sporting CP",
+        "Manchester United",
+        "Real Madrid",
+        "Juventus",
+        "Al Nassr"
+      ],
+      "seniorClubs": [
+        {
+          "id": "336",
+          "name": "Sporting CP",
+          "spells": ["2002-2003"]
+        },
+        {
+          "id": "985",
+          "name": "Manchester United",
+          "spells": ["2003-2009", "2021-2022"]
+        },
+        {
+          "id": "418",
+          "name": "Real Madrid",
+          "spells": ["2009-2018"]
+        },
+        {
+          "id": "506",
+          "name": "Juventus",
+          "spells": ["2018-2021"]
+        },
+        {
+          "id": "18544",
+          "name": "Al Nassr",
+          "spells": ["2023-present"]
+        }
+      ],
+      "youthClubs": [
+        "CF Andorinha (1992-1995)",
+        "CD Nacional (1995-1997)",
+        "Sporting CP (1997-2002)"
+      ],
+      "allTeams": [
+        "Andorinha Yth.",
+        "Nacional Yth.",
+        "Nacional U15",
+        "Sporting Sub-15",
+        "Sporting U17",
+        "Sporting U19",
+        "Sporting",
+        "Man Utd",
+        "Real Madrid",
+        "Juventus",
+        "Al-Nassr"
+      ]
+    },
+    {
+      "id": "28003",
+      "name": "Lionel Messi",
+      "careerClubs": [
+        "Grandoli FC",
+        "Newell's Old Boys",
+        "Barcelona",
+        "Paris Saint-Germain",
+        "Inter Miami"
+      ],
+      "seniorClubs": [
+        {
+          "id": "131",
+          "name": "Barcelona",
+          "spells": ["2005-2021"]
+        },
+        {
+          "id": "583",
+          "name": "Paris Saint-Germain",
+          "spells": ["2021-2023"]
+        },
+        {
+          "id": "69261",
+          "name": "Inter Miami",
+          "spells": ["2023-present"]
+        }
+      ],
+      "youthClubs": [
+        "Grandoli FC (1992-1995)",
+        "Newell's Old Boys (1995-2000)"
+      ],
+      "allTeams": [
+        "Newell's JV",
+        "Barça Youth",
+        "Barça U16",
+        "Barça U19",
+        "Barcelona C",
+        "Barcelona B",
+        "Barcelona",
+        "PSG",
+        "Miami"
+      ]
+    }
+  ]
+}
