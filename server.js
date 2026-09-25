@@ -8,6 +8,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const Database = require("better-sqlite3");
 const { seed, DB_PATH } = require("./db/seed.js");
+const { client } = require("./appwrite.js");
 
 // Veritabani yoksa (ilk calistirma) otomatik olustur ve doldur (SEEDING)
 if (!fs.existsSync(DB_PATH)) {

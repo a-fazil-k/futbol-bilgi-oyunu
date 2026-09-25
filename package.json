@@ -8,6 +8,7 @@
     "seed": "node db/seed.js"
   },
   "dependencies": {
+    "appwrite": "^16.0.2",
     "better-sqlite3": "^11.3.0",
     "express": "^4.19.2",
     "socket.io": "^4.7.5"
