@@ -1,8 +1,9 @@
+require('dotenv').config();
 const { Client } = require("appwrite");
 
 const client = new Client()
-    .setEndpoint("https://fra.cloud.appwrite.io/v1")
-    .setProject("6ab635d20002717b9c3f");
+    .setEndpoint(process.env.APPWRITE_ENDPOINT)
+    .setProject(process.env.APPWRITE_PROJECT_ID);
 
 client.ping()
     .then(() => console.log("[appwrite] Pinged successfully!"))
