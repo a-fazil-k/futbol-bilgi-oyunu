@@ -1,0 +1,6 @@
+node_modules/
+db/football.db
+db/football.db-journal
+db/football.db-wal
+db/football.db-shm
+.env
