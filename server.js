@@ -76,6 +76,16 @@ function searchPlayers(q) {
 const MODES = ["country_club", "club_club"];
 let waitingQueues = { country_club: [], club_club: [] }; // mode -> [{socketId, username}]
 const rooms = new Map(); // roomId -> room state
+const pendingCodeRooms = new Map(); // code -> {code, hostSocketId, hostUsername, mode}
+
+const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // karisikligi onlemek icin 0/O/1/I/L yok
+function generateRoomCode() {
+  let code;
+  do {
+    code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
+  } while (pendingCodeRooms.has(code));
+  return code;
+}
 
 function makeRoomId() {
   return "room_" + Math.random().toString(36).slice(2, 9);
@@ -331,6 +341,9 @@ function finishGame(room) {
 function handlePlayerLeft(socketId) {
   waitingQueues.country_club = waitingQueues.country_club.filter((w) => w.socketId !== socketId);
   waitingQueues.club_club = waitingQueues.club_club.filter((w) => w.socketId !== socketId);
+  for (const [code, pending] of pendingCodeRooms.entries()) {
+    if (pending.hostSocketId === socketId) pendingCodeRooms.delete(code);
+  }
   for (const room of rooms.values()) {
     if (room.players.some((p) => p.socketId === socketId)) {
       clearTimeout(room.selectTimer);
@@ -358,6 +371,69 @@ io.on("connection", (socket) => {
       tryMatchmake(cleanMode);
     } catch (err) {
       console.error("[join_lobby] hata:", err);
+    }
+  });
+
+  socket.on("create_room", ({ username, mode }) => {
+    try {
+      const clean = (username || "").toString().trim().slice(0, 20);
+      if (!clean) return;
+      const cleanMode = MODES.includes(mode) ? mode : "country_club";
+
+      // Bu socket zaten baska bir kod icin bekliyorsa onu iptal et.
+      if (socket.data.pendingCode) {
+        pendingCodeRooms.delete(socket.data.pendingCode);
+      }
+
+      const code = generateRoomCode();
+      pendingCodeRooms.set(code, {
+        code,
+        hostSocketId: socket.id,
+        hostUsername: clean,
+        mode: cleanMode,
+      });
+      socket.data.username = clean;
+      socket.data.pendingCode = code;
+      socket.emit("room_created", { code });
+    } catch (err) {
+      console.error("[create_room] hata:", err);
+    }
+  });
+
+  socket.on("join_room_by_code", ({ username, code }) => {
+    try {
+      const clean = (username || "").toString().trim().slice(0, 20);
+      const cleanCode = (code || "").toString().trim().toUpperCase();
+      if (!clean || !cleanCode) return;
+
+      const pending = pendingCodeRooms.get(cleanCode);
+      if (!pending) {
+        socket.emit("room_join_error", { reason: "not_found" });
+        return;
+      }
+      if (pending.hostSocketId === socket.id) {
+        socket.emit("room_join_error", { reason: "self" });
+        return;
+      }
+      const hostSocket = io.sockets.sockets.get(pending.hostSocketId);
+      if (!hostSocket || !hostSocket.connected) {
+        pendingCodeRooms.delete(cleanCode);
+        socket.emit("room_join_error", { reason: "not_found" });
+        return;
+      }
+
+      pendingCodeRooms.delete(cleanCode);
+      delete hostSocket.data.pendingCode;
+      socket.data.username = clean;
+
+      createRoom(
+        { socketId: pending.hostSocketId, username: pending.hostUsername },
+        { socketId: socket.id, username: clean },
+        pending.mode
+      );
+    } catch (err) {
+      console.error("[join_room_by_code] hata:", err);
+      socket.emit("room_join_error", { reason: "error" });
     }
   });
 

@@ -119,3 +119,27 @@ kalan bir Node sunucusu barındıran bir platform gerekir. En kolay iki seçenek
   bellekte (RAM) tutuluyor ve zaten oyun bitince sıfırlanıyor.
 - Aynı anda birden fazla oda (room) desteklenir — 2'den fazla kişi siteye
   girerse, sistem onları otomatik olarak ikişerli eşleştirir.
+
+
+## Hızlı Eşleş / Oda Kodu ile Oynama
+
+Giriş ekranında kullanıcı adı + mod (Ülke-Kulüp / Kulüp-Kulüp) seçildikten sonra üç yol var:
+
+- **⚡ Hızlı Eşleş:** Aynı modu seçmiş rastgele bir rakiple otomatik eşleşme (önceki davranışın aynısı).
+- **🔑 Oda Oluştur:** 5 karakterlik bir oda kodu üretir (`ABCDEFGHJKMNPQRSTUVWXYZ23456789` karakter kümesinden,
+  karışabilecek 0/O/1/I/L harfleri hariç tutulmuştur) ve arkadaşının katılmasını bekler. Kodu paylaşmak için
+  "Kodu Kopyala" butonu var.
+- **Oda Kodu ile Katıl:** Bir arkadaşın oluşturduğu odanın koduna kullanıcı adı + kod girerek doğrudan o
+  odaya katılma.
+
+Oda kodları sunucu belleğinde tutulur (kalıcı değildir); host bağlantısı koparsa kod otomatik iptal olur.
+
+## Klavye Kısayolları (Autocomplete)
+
+Kulüp/ülke/futbolcu yazarken açılan öneri listesinde:
+- **Tab / Ok aşağı:** sıradaki öneriyi vurgular (Shift+Tab / Ok yukarı: bir önceki).
+- **Enter:** vurgulanan öneriyi hem seçer hem gönderir (hız için tek tuşla seç+gönder).
+- **Esc:** öneri listesini kapatır.
+
+Liste kapalıyken normal Tab tuşu, sayfadaki diğer alanlar arasında (kullanıcı adı → mod → butonlar) standart
+şekilde gezinmeye devam eder.

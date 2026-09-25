@@ -6,6 +6,7 @@ const socket = io();
 const screens = {
   login: document.getElementById("screen-login"),
   lobby: document.getElementById("screen-lobby"),
+  roomcode: document.getElementById("screen-room-code"),
   game: document.getElementById("screen-game"),
   gameover: document.getElementById("screen-gameover"),
 };
@@ -17,31 +18,97 @@ function showScreen(name) {
 let myUsername = "";
 let myRole = null; // 'club' | 'country' bu tur icin
 let currentMode = "country_club"; // 'country_club' | 'club_club'
+let selectedMode = "country_club"; // giris ekraninda secili mod (pill)
 let countdownInterval = null;
 
 // ---------------------------------------------------------------------------
 // EKRAN 1: Giriş
 // ---------------------------------------------------------------------------
 const usernameInput = document.getElementById("username-input");
-const btnModeCountryClub = document.getElementById("btn-mode-country-club");
-const btnModeClubClub = document.getElementById("btn-mode-club-club");
 const loginError = document.getElementById("login-error");
+const modePills = document.querySelectorAll(".mode-pill");
+const btnQuickMatch = document.getElementById("btn-quick-match");
+const btnCreateRoom = document.getElementById("btn-create-room");
+const roomCodeInput = document.getElementById("room-code-input");
+const btnJoinCode = document.getElementById("btn-join-code");
 
-function joinLobby(mode) {
+modePills.forEach((pill) => {
+  pill.addEventListener("click", () => {
+    modePills.forEach((p) => p.classList.remove("active"));
+    pill.classList.add("active");
+    selectedMode = pill.getAttribute("data-mode");
+  });
+});
+
+function requireUsername() {
   const name = usernameInput.value.trim();
   if (!name) {
     loginError.textContent = "Lütfen bir kullanıcı adı gir.";
+    return null;
+  }
+  loginError.textContent = "";
+  myUsername = name;
+  return name;
+}
+
+btnQuickMatch.addEventListener("click", () => {
+  const name = requireUsername();
+  if (!name) return;
+  socket.emit("join_lobby", { username: name, mode: selectedMode });
+});
+
+btnCreateRoom.addEventListener("click", () => {
+  const name = requireUsername();
+  if (!name) return;
+  socket.emit("create_room", { username: name, mode: selectedMode });
+});
+
+btnJoinCode.addEventListener("click", () => {
+  const name = requireUsername();
+  if (!name) return;
+  const code = roomCodeInput.value.trim();
+  if (!code) {
+    loginError.textContent = "Lütfen bir oda kodu gir.";
     return;
   }
-  myUsername = name;
-  loginError.textContent = "";
-  socket.emit("join_lobby", { username: name, mode });
-}
-btnModeCountryClub.addEventListener("click", () => joinLobby("country_club"));
-btnModeClubClub.addEventListener("click", () => joinLobby("club_club"));
-usernameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") joinLobby("country_club"); });
+  socket.emit("join_room_by_code", { username: name, code });
+});
+
+usernameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") btnQuickMatch.click(); });
+roomCodeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") btnJoinCode.click(); });
+roomCodeInput.addEventListener("input", () => {
+  roomCodeInput.value = roomCodeInput.value.toUpperCase();
+});
 
 socket.on("lobby_waiting", () => showScreen("lobby"));
+
+// --- Oda kodu ile oynama ---
+const roomCodeDisplay = document.getElementById("room-code-display");
+const btnCopyCode = document.getElementById("btn-copy-code");
+
+socket.on("room_created", ({ code }) => {
+  roomCodeDisplay.textContent = code;
+  showScreen("roomcode");
+});
+
+btnCopyCode.addEventListener("click", () => {
+  const code = roomCodeDisplay.textContent;
+  if (navigator.clipboard && code) {
+    navigator.clipboard.writeText(code).then(() => {
+      btnCopyCode.textContent = "✅ Kopyalandı";
+      setTimeout(() => { btnCopyCode.textContent = "📋 Kodu Kopyala"; }, 1500);
+    }).catch(() => {});
+  }
+});
+
+socket.on("room_join_error", ({ reason }) => {
+  showScreen("login");
+  if (reason === "self") {
+    loginError.textContent = "Kendi oluşturduğun odaya katılamazsın.";
+  } else {
+    loginError.textContent = "Bu kodla bir oda bulunamadı. Kodu kontrol et.";
+  }
+});
 
 // ---------------------------------------------------------------------------
 // EKRAN 3: Oyun — eşleşme
@@ -156,6 +223,7 @@ function setTimerText(t) {
 
 // --- Autocomplete: kriter seçimi (kulüp veya ülke) ---
 let selectDebounce = null;
+const selectComboState = { index: -1 };
 selectInput.addEventListener("input", () => {
   selectedCriteriaValue = null;
   btnSubmitCriteria.disabled = true;
@@ -170,9 +238,22 @@ selectInput.addEventListener("input", () => {
         selectedCriteriaValue = val;
         btnSubmitCriteria.disabled = false;
         selectDropdown.classList.remove("show");
-      });
+      }, false, selectComboState);
     });
   }, 120);
+});
+
+selectInput.addEventListener("keydown", (e) => {
+  handleComboKeydown(e, selectDropdown, selectComboState, (val) => {
+    selectInput.value = val;
+    selectedCriteriaValue = val;
+    btnSubmitCriteria.disabled = false;
+    selectDropdown.classList.remove("show");
+    if (!criteriaSubmitted) btnSubmitCriteria.click(); // hiz icin: sec + gonder tek Enter'da
+  });
+  if (e.key === "Enter" && !selectDropdown.classList.contains("show")) {
+    if (!criteriaSubmitted && selectedCriteriaValue) btnSubmitCriteria.click();
+  }
 });
 
 btnSubmitCriteria.addEventListener("click", () => {
@@ -241,6 +322,7 @@ socket.on("criteria_locked", ({ chips, seconds, mode }) => {
 });
 
 let guessDebounce = null;
+const guessComboState = { index: -1 };
 guessInput.addEventListener("input", () => {
   const q = guessInput.value.trim();
   clearTimeout(guessDebounce);
@@ -255,7 +337,8 @@ guessInput.addEventListener("input", () => {
           guessInput.value = val;
           guessDropdown.classList.remove("show");
         },
-        true
+        true,
+        guessComboState
       );
     });
   }, 120);
@@ -268,7 +351,16 @@ function trySubmitGuess() {
   socket.emit("submit_guess", { value: val });
 }
 btnSubmitGuess.addEventListener("click", trySubmitGuess);
-guessInput.addEventListener("keydown", (e) => { if (e.key === "Enter") trySubmitGuess(); });
+guessInput.addEventListener("keydown", (e) => {
+  handleComboKeydown(e, guessDropdown, guessComboState, (val) => {
+    guessInput.value = val;
+    guessDropdown.classList.remove("show");
+    trySubmitGuess(); // hiz icin: sec + gonder tek Enter'da
+  });
+  if (e.key === "Enter" && !guessDropdown.classList.contains("show")) {
+    trySubmitGuess();
+  }
+});
 
 socket.on("wrong_answer", ({ seconds }) => {
   guessLockedUntil = Date.now() + seconds * 1000;
@@ -363,7 +455,8 @@ socket.on("opponent_left", () => {
 // ---------------------------------------------------------------------------
 // Autocomplete dropdown render yardımcı fonksiyonu
 // ---------------------------------------------------------------------------
-function renderDropdown(container, items, showCountry, onPick, isPlayerList) {
+function renderDropdown(container, items, showCountry, onPick, isPlayerList, state) {
+  if (state) state.index = -1;
   if (!items || items.length === 0) {
     container.classList.remove("show");
     container.innerHTML = "";
@@ -384,6 +477,44 @@ function renderDropdown(container, items, showCountry, onPick, isPlayerList) {
   container.querySelectorAll(".dropdown-item").forEach((el) => {
     el.addEventListener("click", () => onPick(el.getAttribute("data-name")));
   });
+}
+
+// Autocomplete kutularinda Tab/Ok tuslariyla gezinme, Enter ile secip gonderme.
+function setDropdownHighlight(dropdown, index) {
+  const items = Array.from(dropdown.querySelectorAll(".dropdown-item"));
+  items.forEach((el, i) => el.classList.toggle("active-item", i === index));
+  if (index >= 0 && items[index]) items[index].scrollIntoView({ block: "nearest" });
+  return items;
+}
+
+function handleComboKeydown(e, dropdown, state, onPickAndSubmit) {
+  const isOpen = dropdown.classList.contains("show");
+  const items = isOpen ? Array.from(dropdown.querySelectorAll(".dropdown-item")) : [];
+  if (!isOpen || items.length === 0) return;
+
+  if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) {
+    e.preventDefault();
+    state.index = (state.index + 1) % items.length;
+    setDropdownHighlight(dropdown, state.index);
+    return;
+  }
+  if (e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey)) {
+    e.preventDefault();
+    state.index = (state.index - 1 + items.length) % items.length;
+    setDropdownHighlight(dropdown, state.index);
+    return;
+  }
+  if (e.key === "Enter" && state.index >= 0) {
+    e.preventDefault();
+    const val = items[state.index].getAttribute("data-name");
+    state.index = -1;
+    onPickAndSubmit(val);
+    return;
+  }
+  if (e.key === "Escape") {
+    dropdown.classList.remove("show");
+    state.index = -1;
+  }
 }
 
 function escapeHtml(str) {
