@@ -4,3 +4,5 @@ db/football.db-journal
 db/football.db-wal
 db/football.db-shm
 .env
+.cache/*
+!.cache/transfermarkt-league-players.sqlite3
