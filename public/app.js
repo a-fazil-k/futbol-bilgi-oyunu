@@ -10,6 +10,7 @@ appwriteClient
 
 const account = new Appwrite.Account(appwriteClient);
 const databases = new Appwrite.Databases(appwriteClient);
+const googleProvider = Appwrite.OAuthProvider.Google;
 
 const DB_ID = '6ab67acd00393caac3e0';
 const COL_ID = '6ab67b1e00024e743b26';
@@ -18,7 +19,10 @@ const COL_ID = '6ab67b1e00024e743b26';
 // Ekran yönetimi
 // ---------------------------------------------------------------------------
 const screens = {
+  loading: document.getElementById("screen-loading"),
   auth: document.getElementById("screen-auth"),
+  oauthSuccess: document.getElementById("screen-oauth-success"),
+  oauthFailure: document.getElementById("screen-oauth-failure"),
   verifyNotice: document.getElementById("screen-verify-notice"),
   login: document.getElementById("screen-login"),
   lobby: document.getElementById("screen-lobby"),
@@ -53,25 +57,6 @@ function showScreen(name) {
   }
 }
 
-// URL'de doğrulama parametresi var mı kontrol et
-const urlParams = new URLSearchParams(window.location.search);
-const verifySecret = urlParams.get('secret');
-const verifyUserId = urlParams.get('userId');
-
-if (verifySecret && verifyUserId) {
-  account.updateVerification(verifyUserId, verifySecret)
-    .then(() => {
-      // URL'deki secret parametrelerini sil ve giriş ekranına geç
-      window.history.replaceState({}, document.title, window.location.pathname);
-      checkSession();
-    })
-    .catch(err => {
-      console.error(err);
-      window.history.replaceState({}, document.title, window.location.pathname);
-      checkSession();
-    });
-}
-
 let myUsername = "";
 let myRole = null; // 'club' | 'country' bu tur icin
 let currentMode = "country_club"; // 'country_club' | 'club_club'
@@ -86,6 +71,8 @@ const tabRegister = document.getElementById("tab-register");
 const formLogin = document.getElementById("form-login");
 const formRegister = document.getElementById("form-register");
 const authError = document.getElementById("auth-error");
+const authSubtitle = document.getElementById("auth-subtitle");
+const dashboardUserName = document.getElementById("dashboard-user-name");
 
 tabLogin.addEventListener("click", () => {
   tabLogin.classList.add("active");
@@ -104,37 +91,123 @@ tabRegister.addEventListener("click", () => {
   authError.textContent = "";
 });
 
-// Oturum kontrolü
+async function loadDashboard(user) {
+  myUsername = user.name || user.email || "Oyuncu";
+
+  // OAuth kullanıcıları için eski kullanıcı-adı koleksiyonu bulunmayabilir.
+  // Bu sorgu başarısız olsa bile Appwrite hesabındaki adla dashboard açılır.
+  try {
+    const docs = await databases.listDocuments(DB_ID, COL_ID, [
+      Appwrite.Query.equal("userID", user.$id)
+    ]);
+    if (docs.documents.length > 0 && docs.documents[0].username) {
+      myUsername = docs.documents[0].username;
+    }
+  } catch (error) {
+    console.warn("Kullanıcı adı profili yüklenemedi, hesap adı kullanılıyor.", error);
+  }
+
+  dashboardUserName.textContent = user.name || user.email || myUsername;
+  const dashboardUsernameInput = document.getElementById("username-input");
+  dashboardUsernameInput.value = myUsername;
+  dashboardUsernameInput.disabled = true;
+  showScreen("login");
+}
+
 async function checkSession() {
   try {
     const user = await account.get();
-
-    // DOĞRULAMA KONTROLÜ
     if (user.emailVerification === false) {
       document.getElementById("notice-email").textContent = user.email;
       showScreen("verifyNotice");
       return;
     }
-
-    // Veritabanından username sorgulama:
-    const docs = await databases.listDocuments(DB_ID, COL_ID, [
-      Appwrite.Query.equal("userID", user.$id)
-    ]);
-    
-    if (docs.documents.length > 0) {
-      myUsername = docs.documents[0].username;
-    } else {
-      myUsername = user.name;
+    if (window.location.pathname !== "/dashboard") {
+      window.location.assign("/dashboard");
+      return;
     }
-    
-    // Lobby'e (screen-login) geç
-    usernameInput.value = myUsername;
-    usernameInput.disabled = true; // Artık değiştiremesin
-    showScreen("login");
-  } catch (err) {
-    // Oturum yok, auth ekranında kal
+    await loadDashboard(user);
+  } catch (_error) {
+    if (window.location.pathname !== "/auth") {
+      window.location.assign("/auth");
+      return;
+    }
     showScreen("auth");
   }
+}
+
+async function handleOAuthSuccess() {
+  showScreen("oauthSuccess");
+  const callbackUrl = new URL(window.location.href);
+  const secret = callbackUrl.searchParams.get("secret");
+  const userId = callbackUrl.searchParams.get("userId");
+  const errorElement = document.getElementById("oauth-success-error");
+  const backLink = document.getElementById("oauth-success-back");
+
+  try {
+    if (!secret || !userId) throw new Error("Missing OAuth credentials");
+    await account.createSession({ userId, secret });
+    window.history.replaceState({}, document.title, "/auth/success");
+    window.location.assign("/dashboard");
+  } catch (error) {
+    console.error("OAuth oturumu oluşturulamadı.", error);
+    errorElement.textContent = error.message || "OAuth oturumu oluşturulamadı.";
+    backLink.classList.remove("hidden");
+  }
+}
+
+async function initializeAuthRoute() {
+  const path = window.location.pathname;
+
+  if (path === "/auth/success") {
+    await handleOAuthSuccess();
+    return;
+  }
+
+  if (path === "/auth/failure") {
+    const callbackUrl = new URL(window.location.href);
+    const message =
+      callbackUrl.searchParams.get("error") ||
+      callbackUrl.searchParams.get("message") ||
+      "Kimlik doğrulama tamamlanamadı.";
+    document.getElementById("oauth-failure-message").textContent = message;
+    showScreen("oauthFailure");
+    return;
+  }
+
+  if (path === "/auth") {
+    try {
+      await account.get();
+      window.location.assign("/dashboard");
+    } catch (_error) {
+      showScreen("auth");
+    }
+    return;
+  }
+
+  if (path === "/dashboard") {
+    try {
+      const user = await account.get();
+      await loadDashboard(user);
+    } catch (_error) {
+      window.location.assign("/auth");
+    }
+    return;
+  }
+
+  // Mevcut e-posta doğrulama bağlantıları kök route'a geri dönüyor.
+  const verificationUrl = new URL(window.location.href);
+  const secret = verificationUrl.searchParams.get("secret");
+  const userId = verificationUrl.searchParams.get("userId");
+  if (secret && userId) {
+    try {
+      await account.updateVerification({ userId, secret });
+    } catch (error) {
+      console.error("E-posta doğrulanamadı.", error);
+    }
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+  await checkSession();
 }
 
 // ==========================================
@@ -167,8 +240,8 @@ document.getElementById("btn-resend-verify").addEventListener("click", async () 
 });
 
 document.getElementById("btn-logout-verify").addEventListener("click", async () => {
-  await account.deleteSession("current");
-  showScreen("auth");
+  await account.deleteSession({ sessionId: "current" });
+  window.location.assign("/auth");
 });
 
 // ---------------------------------------------------------------------------
@@ -254,24 +327,42 @@ formLogin.addEventListener("submit", async (e) => {
   }
 });
 
-// Google Login
-document.getElementById("btn-google-login").addEventListener("click", () => {
-  account.createOAuth2Session('google', window.location.href, window.location.href);
-});
+async function signInWithGoogle() {
+  const button = document.getElementById("btn-google-login");
+  const success = `${window.location.origin}/auth/success`;
+  const failure = `${window.location.origin}/auth/failure`;
 
-// Uygulama açılışında session kontrolü
-checkSession();
+  try {
+    button.disabled = true;
+    authError.textContent = "";
+    // Bu çağrı tarayıcıyı Google'a yönlendirir; ayrıca redirect yapılmamalı.
+    await account.createOAuth2Token({
+      provider: googleProvider,
+      success,
+      failure,
+    });
+  } catch (error) {
+    console.error("Google OAuth başlatılamadı.", error);
+    authError.textContent = error.message || "Google ile giriş başlatılamadı.";
+    button.disabled = false;
+  }
+}
+
+document.getElementById("btn-google-login").addEventListener("click", signInWithGoogle);
+
+// Route guard ve callback işlemleri, korumalı UI gösterilmeden tamamlanır.
+initializeAuthRoute();
 
 // Çıkış Yap (Logout)
 const btnLogout = document.getElementById("btn-logout");
 if (btnLogout) {
   btnLogout.addEventListener("click", async () => {
     try {
-      await account.deleteSession("current");
+      await account.deleteSession({ sessionId: "current" });
     } catch (e) {
       console.warn("Logout error:", e);
     }
-    window.location.reload();
+    window.location.assign("/auth");
   });
 }
 

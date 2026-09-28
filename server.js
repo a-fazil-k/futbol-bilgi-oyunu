@@ -10,7 +10,6 @@ const { Server } = require("socket.io");
 const Database = require("better-sqlite3");
 const nodemailer = require("nodemailer");
 const { seed, DB_PATH } = require("./db/seed.js");
-const { client } = require("./appwrite.js");
 
 // Veritabani yoksa (ilk calistirma) otomatik olustur ve doldur (SEEDING)
 if (!fs.existsSync(DB_PATH)) {
@@ -24,7 +23,13 @@ const db = new Database(DB_PATH, { readonly: false });
 
 const app = express();
 app.use(express.json());
+app.get("/vendor/appwrite.js", (_req, res) => {
+  res.sendFile(path.join(__dirname, "node_modules", "appwrite", "dist", "iife", "sdk.js"));
+});
 app.use(express.static(path.join(__dirname, "public")));
+app.get(["/auth", "/auth/success", "/auth/failure", "/dashboard"], (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
 // ---------------------------------------------------------------------------
 // E-posta Doğrulama Sistemi (Nodemailer + Gmail SMTP)

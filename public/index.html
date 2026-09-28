@@ -4,14 +4,21 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>⚽ Futbol Bilgi Düellosu</title>
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="/style.css" />
 </head>
 <body>
 
 <div class="stadium-glow"></div>
 
+<section id="screen-loading" class="screen active" aria-live="polite">
+  <div class="card auth-status-card">
+    <div class="spinner"></div>
+    <p class="subtitle">Oturum kontrol ediliyor...</p>
+  </div>
+</section>
+
 <!-- ============ EKRAN 0: AUTH ============ -->
-<section id="screen-auth" class="screen active">
+<section id="screen-auth" class="screen">
   <div class="card auth-card">
     <h1 class="logo">⚽ FUTBOL <span class="accent">DÜELLOSU</span></h1>
     <p class="subtitle" id="auth-subtitle">Giriş yap veya yeni hesap oluştur.</p>
@@ -38,9 +45,34 @@
     </form>
     
     <div class="divider"><span>veya</span></div>
-    <button type="button" id="btn-google-login" class="btn-secondary">🔵 Google ile Giriş Yap</button>
+    <button type="button" id="btn-google-login" class="btn-google">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path fill-rule="evenodd" clip-rule="evenodd" d="M15.7034 7.91133C14.7554 7.02509 13.4903 6.54228 12.1813 6.56212C9.78605 6.56212 7.75176 8.14611 7.02642 10.279V10.2791C6.64183 11.3968 6.64183 12.6071 7.02642 13.7249H7.02979C7.75849 15.8545 9.78941 17.4385 12.1847 17.4385C13.4211 17.4385 14.4826 17.1285 15.3053 16.5809V16.5787C16.2735 15.9504 16.9348 14.9616 17.1406 13.8439H12.1813V10.3783H20.8414C20.9494 10.9802 21 11.5952 21 12.207C21 14.9443 20.002 17.2586 18.2655 18.826L18.2673 18.8274C16.7458 20.203 14.6576 21 12.1813 21C8.70985 21 5.53527 19.082 3.97666 16.043V16.043C2.67445 13.5 2.67445 10.5039 3.97666 7.96096H3.97668L3.97666 7.96094C5.53527 4.9186 8.70985 3.00061 12.1813 3.00061C14.4619 2.97415 16.6649 3.8141 18.3247 5.34188L15.7034 7.91133Z" fill="#C4C6D7"/>
+      </svg>
+      <span>Sign in with Google</span>
+    </button>
 
     <p id="auth-error" class="error-text"></p>
+  </div>
+</section>
+
+<!-- ============ OAUTH CALLBACK ============ -->
+<section id="screen-oauth-success" class="screen">
+  <div class="card auth-status-card">
+    <div class="spinner"></div>
+    <h2>Google oturumu açılıyor...</h2>
+    <p class="subtitle">Güvenli oturumunuz hazırlanıyor.</p>
+    <p id="oauth-success-error" class="error-text"></p>
+    <a class="btn-link hidden" id="oauth-success-back" href="/auth">Giriş ekranına dön</a>
+  </div>
+</section>
+
+<section id="screen-oauth-failure" class="screen">
+  <div class="card auth-status-card">
+    <div class="auth-failure-icon">!</div>
+    <h2>Google ile giriş başarısız</h2>
+    <p id="oauth-failure-message" class="subtitle">Kimlik doğrulama tamamlanamadı.</p>
+    <a class="btn-primary auth-back-link" href="/auth">Giriş ekranına dön</a>
   </div>
 </section>
 
@@ -63,6 +95,7 @@
 <section id="screen-login" class="screen">
   <div class="card login-card">
     <h1 class="logo">⚽ FUTBOL <span class="accent">DÜELLOSU</span></h1>
+    <p class="dashboard-welcome">Hoş geldin, <strong id="dashboard-user-name">Oyuncu</strong></p>
     <p class="subtitle">Bir mod seç, doğru futbolcuyu rakibinden önce bul.</p>
     <input id="username-input" type="text" maxlength="20" placeholder="Kullanıcı adın..." autocomplete="off" />
 
@@ -176,8 +209,8 @@
   Rakip oyundan ayrıldı. Lobiye dönülüyor...
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/appwrite@16.0.2"></script>
+<script src="/vendor/appwrite.js"></script>
 <script src="/socket.io/socket.io.js"></script>
-<script src="app.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>
