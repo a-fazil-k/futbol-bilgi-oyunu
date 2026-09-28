@@ -32,15 +32,30 @@
     <form id="form-register" class="auth-form hidden">
       <input id="reg-email" type="email" placeholder="E-posta Adresi" autocomplete="email" required />
       <input id="reg-username" type="text" maxlength="20" placeholder="Kullanıcı Adı" autocomplete="off" required />
-      <input id="reg-password" type="password" placeholder="Şifre" autocomplete="new-password" required />
+      <input id="reg-password" type="password" placeholder="Şifre (min 8 karakter)" autocomplete="new-password" required />
       <input id="reg-password-confirm" type="password" placeholder="Şifre (Tekrar)" autocomplete="new-password" required />
       <button type="submit" id="btn-register" class="btn-primary">KAYIT OL</button>
     </form>
-
+    
     <div class="divider"><span>veya</span></div>
     <button type="button" id="btn-google-login" class="btn-secondary">🔵 Google ile Giriş Yap</button>
 
     <p id="auth-error" class="error-text"></p>
+  </div>
+</section>
+
+<!-- ============ EKRAN 0.5: DOĞRULAMA UYARISI ============ -->
+<section id="screen-verify-notice" class="screen">
+  <div class="card">
+    <div style="font-size: 50px; margin-bottom:10px;">✉️</div>
+    <h2>Lütfen E-postanızı Doğrulayın</h2>
+    <p class="subtitle" style="margin-top:10px;">
+      <b><span id="notice-email"></span></b> adresine bir doğrulama bağlantısı gönderdik.<br><br>
+      E-postanıza giderek bağlantıya tıklayın ve hesabınızı onaylayın. (Gerekiyorsa Spam klasörüne de bakın.)
+    </p>
+    <button id="btn-resend-verify" class="btn-primary" style="margin-top:20px;">🔄 Tekrar Gönder</button>
+    <button id="btn-logout-verify" class="btn-secondary" style="margin-top:10px;">⬅ Başlangıca Geri Dön</button>
+    <p id="verify-error" class="error-text"></p>
   </div>
 </section>
 
@@ -72,6 +87,7 @@
     </div>
 
     <p id="login-error" class="error-text"></p>
+    <button type="button" id="btn-logout" class="btn-link" style="margin-top:10px;">🚪 Oturumu Kapat</button>
   </div>
 </section>
 

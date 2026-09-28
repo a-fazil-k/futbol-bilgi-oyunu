@@ -12,6 +12,7 @@
     "better-sqlite3": "^11.3.0",
     "dotenv": "^18.0.3",
     "express": "^4.19.2",
+    "nodemailer": "^10.0.12",
     "socket.io": "^4.7.5"
   },
   "license": "ISC",

@@ -19,17 +19,57 @@ const COL_ID = '6ab67b1e00024e743b26';
 // ---------------------------------------------------------------------------
 const screens = {
   auth: document.getElementById("screen-auth"),
+  verifyNotice: document.getElementById("screen-verify-notice"),
   login: document.getElementById("screen-login"),
   lobby: document.getElementById("screen-lobby"),
   roomcode: document.getElementById("screen-room-code"),
   game: document.getElementById("screen-game"),
   gameover: document.getElementById("screen-gameover"),
 };
+let verifyPollingInterval = null;
 function showScreen(name) {
   Object.values(screens).forEach((s) => {
     if(s) s.classList.remove("active");
   });
   if(screens[name]) screens[name].classList.add("active");
+  
+  // E-posta doğrulama ekranındaysa periyodik olarak kontrol et
+  if (name === "verifyNotice") {
+    if (!verifyPollingInterval) {
+      verifyPollingInterval = setInterval(async () => {
+        try {
+          const u = await account.get();
+          if (u.emailVerification) {
+            clearInterval(verifyPollingInterval);
+            verifyPollingInterval = null;
+            checkSession(); // Doğrulandıysa hemen giriş yap
+          }
+        } catch (e) {}
+      }, 3000);
+    }
+  } else {
+    clearInterval(verifyPollingInterval);
+    verifyPollingInterval = null;
+  }
+}
+
+// URL'de doğrulama parametresi var mı kontrol et
+const urlParams = new URLSearchParams(window.location.search);
+const verifySecret = urlParams.get('secret');
+const verifyUserId = urlParams.get('userId');
+
+if (verifySecret && verifyUserId) {
+  account.updateVerification(verifyUserId, verifySecret)
+    .then(() => {
+      // URL'deki secret parametrelerini sil ve giriş ekranına geç
+      window.history.replaceState({}, document.title, window.location.pathname);
+      checkSession();
+    })
+    .catch(err => {
+      console.error(err);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      checkSession();
+    });
 }
 
 let myUsername = "";
@@ -52,6 +92,7 @@ tabLogin.addEventListener("click", () => {
   tabRegister.classList.remove("active");
   formLogin.classList.remove("hidden");
   formRegister.classList.add("hidden");
+  authSubtitle.textContent = "Giriş yap veya yeni hesap oluştur.";
   authError.textContent = "";
 });
 
@@ -67,11 +108,14 @@ tabRegister.addEventListener("click", () => {
 async function checkSession() {
   try {
     const user = await account.get();
-    // Kullanıcının ismini (username olarak kaydetmiştik) veya veritabanından username'i alalım.
-    // Şimdilik Appwrite name alanında tuttuğumuzu varsayıyoruz, 
-    // veya veritabanından çekebiliriz. Biz en kolayı account name'i kullanalım.
-    // Eğer name boşsa veritabanından getirebiliriz.
-    
+
+    // DOĞRULAMA KONTROLÜ
+    if (user.emailVerification === false) {
+      document.getElementById("notice-email").textContent = user.email;
+      showScreen("verifyNotice");
+      return;
+    }
+
     // Veritabanından username sorgulama:
     const docs = await databases.listDocuments(DB_ID, COL_ID, [
       Appwrite.Query.equal("userID", user.$id)
@@ -93,14 +137,54 @@ async function checkSession() {
   }
 }
 
-// Kayıt Ol
+// ==========================================
+// EKRAN 0.5: DOĞRULAMA UYARI EKRANI İŞLEMLERİ
+// ==========================================
+
+document.getElementById("btn-resend-verify").addEventListener("click", async () => {
+  const btn = document.getElementById("btn-resend-verify");
+  try {
+    btn.disabled = true;
+    btn.textContent = "⏳ Gönderiliyor...";
+    await account.createVerification(window.location.origin + window.location.pathname);
+    
+    const errEl = document.getElementById("verify-error");
+    errEl.style.color = "green";
+    errEl.textContent = "Doğrulama maili tekrar gönderildi. Lütfen e-postanızı kontrol edin.";
+    
+    setTimeout(() => { 
+      btn.disabled = false; 
+      btn.textContent = "🔄 Tekrar Gönder"; 
+      errEl.style.color = "";
+      errEl.textContent = "";
+    }, 10000); // 10 saniye bekleme süresi
+  } catch (err) {
+    document.getElementById("verify-error").style.color = "red";
+    document.getElementById("verify-error").textContent = "Hata: " + err.message;
+    btn.disabled = false;
+    btn.textContent = "🔄 Tekrar Gönder";
+  }
+});
+
+document.getElementById("btn-logout-verify").addEventListener("click", async () => {
+  await account.deleteSession("current");
+  showScreen("auth");
+});
+
+// ---------------------------------------------------------------------------
+// KAYIT (Appwrite Email Verification)
+// ---------------------------------------------------------------------------
 formRegister.addEventListener("submit", async (e) => {
   e.preventDefault();
+  
   const email = document.getElementById("reg-email").value.trim();
   const username = document.getElementById("reg-username").value.trim();
   const pass = document.getElementById("reg-password").value;
   const passConfirm = document.getElementById("reg-password-confirm").value;
 
+  if (pass.length < 8) {
+    return authError.textContent = "Şifre en az 8 karakter olmalı.";
+  }
   if (pass !== passConfirm) {
     return authError.textContent = "Şifreler eşleşmiyor!";
   }
@@ -122,16 +206,20 @@ formRegister.addEventListener("submit", async (e) => {
     await databases.createDocument(DB_ID, COL_ID, Appwrite.ID.unique(), {
       userID: user.$id,
       username: username,
-      eMail: email // Kullanıcının oluşturduğu eMail büyük M ile
+      eMail: email
     });
 
-    authError.textContent = "Kayıt başarılı, giriş yapılıyor...";
+    authError.textContent = "Giriş yapılıyor...";
     await account.createEmailPasswordSession(email, pass);
+    
+    authError.textContent = "Doğrulama bağlantısı gönderiliyor...";
+    await account.createVerification(window.location.origin + window.location.pathname);
+    
     checkSession();
 
   } catch (err) {
     console.error(err);
-    if (err.message.includes("already exists")) {
+    if (err.message && err.message.includes("already exists")) {
       authError.textContent = "Bu mail zaten mevcut, lütfen giriş yapın.";
     } else {
       authError.textContent = err.message || "Kayıt olurken bir hata oluştu.";
@@ -173,6 +261,19 @@ document.getElementById("btn-google-login").addEventListener("click", () => {
 
 // Uygulama açılışında session kontrolü
 checkSession();
+
+// Çıkış Yap (Logout)
+const btnLogout = document.getElementById("btn-logout");
+if (btnLogout) {
+  btnLogout.addEventListener("click", async () => {
+    try {
+      await account.deleteSession("current");
+    } catch (e) {
+      console.warn("Logout error:", e);
+    }
+    window.location.reload();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // EKRAN 1: Giriş / Lobi (Mod Seçimi)

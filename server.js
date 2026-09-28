@@ -1,12 +1,14 @@
 // server.js
 // Gercek zamanli 2 oyunculu futbol bilgi/tahmin oyunu sunucusu.
 
+require("dotenv").config();
 const path = require("path");
 const fs = require("fs");
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const Database = require("better-sqlite3");
+const nodemailer = require("nodemailer");
 const { seed, DB_PATH } = require("./db/seed.js");
 const { client } = require("./appwrite.js");
 
@@ -21,7 +23,153 @@ if (!fs.existsSync(DB_PATH)) {
 const db = new Database(DB_PATH, { readonly: false });
 
 const app = express();
+app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+// ---------------------------------------------------------------------------
+// E-posta Doğrulama Sistemi (Nodemailer + Gmail SMTP)
+// ---------------------------------------------------------------------------
+const smtpTransporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+// { email -> { code, expiresAt, verified } }
+const verificationCodes = new Map();
+const CODE_TTL_MS = 5 * 60 * 1000; // 5 dakika
+const RESEND_COOLDOWN_MS = 60 * 1000; // 60 saniye bekleme
+
+function generateVerificationCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Suresi dolmus kodlari temizle (her 2 dakikada)
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, data] of verificationCodes.entries()) {
+    if (now > data.expiresAt) verificationCodes.delete(email);
+  }
+}, 2 * 60 * 1000);
+
+// POST /api/send-code  -  E-posta adresine 6 haneli dogrulama kodu gonder
+app.post("/api/send-code", async (req, res) => {
+  try {
+    const email = (req.body.email || "").trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Geçerli bir e-posta adresi girin." });
+    }
+
+    // Cooldown kontrolu
+    const existing = verificationCodes.get(email);
+    if (existing && existing.sentAt && Date.now() - existing.sentAt < RESEND_COOLDOWN_MS) {
+      const remaining = Math.ceil((RESEND_COOLDOWN_MS - (Date.now() - existing.sentAt)) / 1000);
+      return res.status(429).json({ error: `Lütfen ${remaining} saniye bekleyin.` });
+    }
+
+    const code = generateVerificationCode();
+    verificationCodes.set(email, {
+      code,
+      expiresAt: Date.now() + CODE_TTL_MS,
+      sentAt: Date.now(),
+      verified: false,
+    });
+
+    const isSmtpConfigured =
+      process.env.SMTP_USER &&
+      !process.env.SMTP_USER.includes("senin-gmail") &&
+      process.env.SMTP_PASS &&
+      !process.env.SMTP_PASS.includes("xxxx");
+
+    if (isSmtpConfigured) {
+      await smtpTransporter.sendMail({
+        from: `"Futbol Düellosu" <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: "⚽ Futbol Düellosu - Doğrulama Kodunuz",
+        html: `
+          <div style="font-family:Arial,sans-serif; max-width:480px; margin:auto; padding:30px; background:#0a0e0a; border-radius:16px; border:1px solid #1f2e20;">
+            <h1 style="color:#39ff6a; text-align:center; margin-bottom:8px;">⚽ FUTBOL DÜELLOSU</h1>
+            <p style="color:#8ba591; text-align:center; margin-bottom:24px;">E-posta doğrulama kodunuz:</p>
+            <div style="background:#121a13; border:2px solid #39ff6a; border-radius:12px; padding:20px; text-align:center; margin-bottom:20px;">
+              <span style="font-size:36px; font-weight:900; letter-spacing:8px; color:#39ff6a;">${code}</span>
+            </div>
+            <p style="color:#8ba591; text-align:center; font-size:13px;">Bu kod 5 dakika geçerlidir.</p>
+            <p style="color:#5a7a63; text-align:center; font-size:11px; margin-top:16px;">Bu e-postayı siz talep etmediyseniz lütfen dikkate almayın.</p>
+          </div>
+        `,
+      });
+      console.log(`[mail] Doğrulama kodu e-posta ile gönderildi: ${email}`);
+      res.json({ success: true, message: "Doğrulama kodu e-postanıza gönderildi." });
+    } else {
+      console.log(
+        `\n========================================\n` +
+        `[MAIL SİMÜLASYONU]\n` +
+        `Alıcı: ${email}\n` +
+        `Doğrulama Kodu: ${code}\n` +
+        `Not: .env dosyasında SMTP_USER ve SMTP_PASS ayarlandığında gerçek mail gidecektir.\n` +
+        `========================================\n`
+      );
+      res.json({
+        success: true,
+        message: "Doğrulama kodu oluşturuldu (Geliştirme modunda terminale yazıldı).",
+        simulation: true
+      });
+    }
+  } catch (err) {
+    console.error("[mail] Kod gönderme hatası:", err);
+    res.status(500).json({ error: "E-posta gönderilemedi: " + (err.message || "Bilinmeyen hata") });
+  }
+});
+
+// POST /api/verify-code  -  Kodu dogrula
+app.post("/api/verify-code", (req, res) => {
+  try {
+    const email = (req.body.email || "").trim().toLowerCase();
+    const code = (req.body.code || "").trim();
+
+    if (!email || !code) {
+      return res.status(400).json({ error: "E-posta ve kod gerekli." });
+    }
+
+    const data = verificationCodes.get(email);
+    if (!data) {
+      return res.status(400).json({ error: "Bu e-posta için doğrulama kodu bulunamadı. Yeni kod isteyin." });
+    }
+    if (Date.now() > data.expiresAt) {
+      verificationCodes.delete(email);
+      return res.status(400).json({ error: "Kodun süresi dolmuş. Yeni kod isteyin." });
+    }
+    if (data.code !== code) {
+      return res.status(400).json({ error: "Yanlış kod. Tekrar deneyin." });
+    }
+
+    // Dogrulanmis olarak isaretle
+    data.verified = true;
+    data.verifiedAt = Date.now();
+    console.log(`[mail] E-posta doğrulandı: ${email}`);
+    res.json({ success: true, message: "E-posta doğrulandı!" });
+  } catch (err) {
+    console.error("[mail] Doğrulama hatası:", err);
+    res.status(500).json({ error: "Doğrulama sırasında bir hata oluştu." });
+  }
+});
+
+// POST /api/check-verified  -  E-posta dogrulanmis mi kontrol et (kayit oncesi)
+app.post("/api/check-verified", (req, res) => {
+  const email = (req.body.email || "").trim().toLowerCase();
+  const data = verificationCodes.get(email);
+  if (!data || !data.verified) {
+    return res.status(400).json({ verified: false, error: "E-posta doğrulanmamış." });
+  }
+  // Dogrulamadan sonra 10 dakika icinde kayit olunmazsa iptal
+  if (Date.now() - data.verifiedAt > 10 * 60 * 1000) {
+    verificationCodes.delete(email);
+    return res.status(400).json({ verified: false, error: "Doğrulama süresi dolmuş. Tekrar doğrulayın." });
+  }
+  res.json({ verified: true });
+});
 
 const server = http.createServer(app);
 const io = new Server(server);
