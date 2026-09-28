@@ -76,6 +76,28 @@
   </div>
 </section>
 
+<!-- ============ GOOGLE KULLANICI ADI ============ -->
+<section id="screen-username-setup" class="screen">
+  <div class="card auth-card username-setup-card">
+    <h1 class="logo">⚽ FUTBOL <span class="accent">DÜELLOSU</span></h1>
+    <h2>Kullanıcı adını seç</h2>
+    <p class="subtitle">Google hesabındaki ad yerine oyunda görünmesini istediğin adı yaz.</p>
+    <form id="form-username-setup" class="auth-form">
+      <input
+        id="setup-username"
+        type="text"
+        maxlength="20"
+        placeholder="Kullanıcı adın"
+        autocomplete="username"
+        required
+      />
+      <button type="submit" id="btn-save-username" class="btn-primary">DEVAM ET</button>
+    </form>
+    <p id="username-setup-error" class="error-text"></p>
+    <button type="button" id="btn-logout-setup" class="btn-link">Başka hesapla giriş yap</button>
+  </div>
+</section>
+
 <!-- ============ EKRAN 0.5: DOĞRULAMA UYARISI ============ -->
 <section id="screen-verify-notice" class="screen">
   <div class="card">

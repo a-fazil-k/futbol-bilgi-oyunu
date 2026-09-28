@@ -23,6 +23,7 @@ const screens = {
   auth: document.getElementById("screen-auth"),
   oauthSuccess: document.getElementById("screen-oauth-success"),
   oauthFailure: document.getElementById("screen-oauth-failure"),
+  usernameSetup: document.getElementById("screen-username-setup"),
   verifyNotice: document.getElementById("screen-verify-notice"),
   login: document.getElementById("screen-login"),
   lobby: document.getElementById("screen-lobby"),
@@ -73,6 +74,11 @@ const formRegister = document.getElementById("form-register");
 const authError = document.getElementById("auth-error");
 const authSubtitle = document.getElementById("auth-subtitle");
 const dashboardUserName = document.getElementById("dashboard-user-name");
+const formUsernameSetup = document.getElementById("form-username-setup");
+const setupUsernameInput = document.getElementById("setup-username");
+const usernameSetupError = document.getElementById("username-setup-error");
+let pendingDashboardUser = null;
+let pendingUsernameProfile = null;
 
 tabLogin.addEventListener("click", () => {
   tabLogin.classList.add("active");
@@ -91,27 +97,53 @@ tabRegister.addEventListener("click", () => {
   authError.textContent = "";
 });
 
-async function loadDashboard(user) {
-  myUsername = user.name || user.email || "Oyuncu";
+function showUsernameSetup(user, profile = null, errorMessage = "") {
+  pendingDashboardUser = user;
+  pendingUsernameProfile = profile;
+  setupUsernameInput.value = (
+    (profile && profile.username) ||
+    user.name ||
+    (user.email ? user.email.split("@")[0] : "")
+  ).slice(0, 20);
+  usernameSetupError.textContent = errorMessage;
+  showScreen("usernameSetup");
+  setupUsernameInput.focus();
+}
 
-  // OAuth kullanıcıları için eski kullanıcı-adı koleksiyonu bulunmayabilir.
-  // Bu sorgu başarısız olsa bile Appwrite hesabındaki adla dashboard açılır.
-  try {
-    const docs = await databases.listDocuments(DB_ID, COL_ID, [
-      Appwrite.Query.equal("userID", user.$id)
-    ]);
-    if (docs.documents.length > 0 && docs.documents[0].username) {
-      myUsername = docs.documents[0].username;
-    }
-  } catch (error) {
-    console.warn("Kullanıcı adı profili yüklenemedi, hesap adı kullanılıyor.", error);
-  }
-
-  dashboardUserName.textContent = user.name || user.email || myUsername;
+function renderDashboard(username) {
+  myUsername = username;
+  dashboardUserName.textContent = myUsername;
   const dashboardUsernameInput = document.getElementById("username-input");
   dashboardUsernameInput.value = myUsername;
   dashboardUsernameInput.disabled = true;
   showScreen("login");
+}
+
+async function loadDashboard(user) {
+  let profile = null;
+  try {
+    const docs = await databases.listDocuments(DB_ID, COL_ID, [
+      Appwrite.Query.equal("userID", user.$id)
+    ]);
+    profile = docs.documents[0] || null;
+  } catch (error) {
+    console.warn("Kullanıcı adı profili yüklenemedi.", error);
+    showUsernameSetup(
+      user,
+      null,
+      "Kullanıcı adı profili kontrol edilemedi. Tekrar kaydetmeyi deneyebilirsin."
+    );
+    return;
+  }
+
+  const justSignedInWithGoogle =
+    sessionStorage.getItem("googleOAuthPendingUsername") === user.$id;
+  if (!profile || justSignedInWithGoogle) {
+    showUsernameSetup(user, profile);
+    return;
+  }
+
+  renderDashboard(profile.username || user.name || user.email || "Oyuncu");
 }
 
 async function checkSession() {
@@ -147,6 +179,7 @@ async function handleOAuthSuccess() {
   try {
     if (!secret || !userId) throw new Error("Missing OAuth credentials");
     await account.createSession({ userId, secret });
+    sessionStorage.setItem("googleOAuthPendingUsername", userId);
     window.history.replaceState({}, document.title, "/auth/success");
     window.location.assign("/dashboard");
   } catch (error) {
@@ -349,6 +382,80 @@ async function signInWithGoogle() {
 }
 
 document.getElementById("btn-google-login").addEventListener("click", signInWithGoogle);
+
+formUsernameSetup.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const username = setupUsernameInput.value.trim();
+  const saveButton = document.getElementById("btn-save-username");
+
+  if (!username) {
+    usernameSetupError.textContent = "Lütfen bir kullanıcı adı gir.";
+    return;
+  }
+
+  try {
+    saveButton.disabled = true;
+    usernameSetupError.textContent = "Kullanıcı adı kontrol ediliyor...";
+    const user = pendingDashboardUser || await account.get();
+    const [matchingProfiles, ownProfiles] = await Promise.all([
+      databases.listDocuments(DB_ID, COL_ID, [
+        Appwrite.Query.equal("username", username)
+      ]),
+      databases.listDocuments(DB_ID, COL_ID, [
+        Appwrite.Query.equal("userID", user.$id)
+      ]),
+    ]);
+    const usernameBelongsToAnotherUser = matchingProfiles.documents.some(
+      (profile) => profile.userID !== user.$id
+    );
+    if (usernameBelongsToAnotherUser) {
+      usernameSetupError.textContent = "Bu kullanıcı adı zaten alınmış.";
+      return;
+    }
+
+    usernameSetupError.textContent = "Kullanıcı adı kaydediliyor...";
+    await account.updateName({ name: username });
+    const profileData = {
+      userID: user.$id,
+      username,
+      eMail: user.email,
+    };
+    const existingProfile = pendingUsernameProfile || ownProfiles.documents[0];
+    if (existingProfile) {
+      await databases.updateDocument(
+        DB_ID,
+        COL_ID,
+        existingProfile.$id,
+        profileData
+      );
+    } else {
+      await databases.createDocument(
+        DB_ID,
+        COL_ID,
+        Appwrite.ID.unique(),
+        profileData
+      );
+    }
+
+    sessionStorage.removeItem("googleOAuthPendingUsername");
+    pendingDashboardUser = null;
+    pendingUsernameProfile = null;
+    const updatedUser = await account.get();
+    await loadDashboard(updatedUser);
+  } catch (error) {
+    console.error("Kullanıcı adı kaydedilemedi.", error);
+    usernameSetupError.textContent =
+      error.message || "Kullanıcı adı kaydedilemedi. Tekrar deneyin.";
+  } finally {
+    saveButton.disabled = false;
+  }
+});
+
+document.getElementById("btn-logout-setup").addEventListener("click", async () => {
+  await account.deleteSession({ sessionId: "current" });
+  sessionStorage.removeItem("googleOAuthPendingUsername");
+  window.location.assign("/auth");
+});
 
 // Route guard ve callback işlemleri, korumalı UI gösterilmeden tamamlanır.
 initializeAuthRoute();

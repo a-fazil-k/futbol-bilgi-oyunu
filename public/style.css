@@ -538,6 +538,18 @@ input[type="text"]:focus, input[type="password"]:focus, input[type="email"]:focu
   max-width: 460px;
 }
 
+.username-setup-card {
+  max-width: 460px;
+}
+
+.username-setup-card h2 {
+  margin: 18px 0 8px;
+}
+
+.username-setup-card .auth-form {
+  margin-top: 22px;
+}
+
 .auth-failure-icon {
   width: 56px;
   height: 56px;
