@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "dev": "node --watch server.js",
     "seed": "node db/seed.js",
     "import-appwrite": "node scripts/import_appwrite_tables.js"
   },
