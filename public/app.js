@@ -26,6 +26,9 @@ const screens = {
   usernameSetup: document.getElementById("screen-username-setup"),
   verifyNotice: document.getElementById("screen-verify-notice"),
   login: document.getElementById("screen-login"),
+  createRoom: document.getElementById("screen-create-room"),
+  serverBrowser: document.getElementById("screen-server-browser"),
+  roomLobby: document.getElementById("screen-room-lobby"),
   lobby: document.getElementById("screen-lobby"),
   roomcode: document.getElementById("screen-room-code"),
   game: document.getElementById("screen-game"),
@@ -149,7 +152,7 @@ async function loadDashboard(user) {
 async function checkSession() {
   try {
     const user = await account.get();
-    if (user.emailVerification === false) {
+    if (user.email && user.emailVerification === false) {
       document.getElementById("notice-email").textContent = user.email;
       showScreen("verifyNotice");
       return;
@@ -383,6 +386,35 @@ async function signInWithGoogle() {
 
 document.getElementById("btn-google-login").addEventListener("click", signInWithGoogle);
 
+// Misafir Girişi (Guest Login)
+document.getElementById("btn-guest-login").addEventListener("click", async () => {
+  try {
+    authError.textContent = "Misafir girişi yapılıyor...";
+    
+    // Eğer önceden açık bir session varsa sil
+    try { await account.deleteSession("current"); } catch(e) {}
+    
+    // Appwrite Anonim Session Oluştur
+    const session = await account.createAnonymousSession();
+    
+    // Rastgele Guest ismi oluştur
+    const guestName = "Guest_" + Math.floor(10000 + Math.random() * 90000);
+    
+    // DB'ye misafir kaydını at
+    await databases.createDocument(DB_ID, COL_ID, Appwrite.ID.unique(), {
+      userID: session.userId,
+      username: guestName,
+      eMail: `guest_${session.userId}@guest.com`
+    });
+    
+    // Direkt olarak Dashboard(Lobi) ekranına at, sayfa yenileme
+    renderDashboard(guestName);
+  } catch (err) {
+    console.error(err);
+    authError.textContent = "Misafir girişi başarısız. Appwrite ayarlarında 'Anonymous' girişi aktif olmayabilir.";
+  }
+});
+
 formUsernameSetup.addEventListener("submit", async (event) => {
   event.preventDefault();
   const username = setupUsernameInput.value.trim();
@@ -465,11 +497,13 @@ const btnLogout = document.getElementById("btn-logout");
 if (btnLogout) {
   btnLogout.addEventListener("click", async () => {
     try {
-      await account.deleteSession({ sessionId: "current" });
+      await account.deleteSession("current");
     } catch (e) {
       console.warn("Logout error:", e);
     }
-    window.location.assign("/auth");
+    // Sayfayı yenilemeden direkt giriş ekranına dön
+    window.history.pushState({}, "", "/");
+    showScreen("auth");
   });
 }
 
@@ -480,6 +514,7 @@ const usernameInput = document.getElementById("username-input");
 const loginError = document.getElementById("login-error");
 const modePills = document.querySelectorAll(".mode-pill");
 const btnQuickMatch = document.getElementById("btn-quick-match");
+const btnServerBrowser = document.getElementById("btn-server-browser");
 const btnCreateRoom = document.getElementById("btn-create-room");
 const roomCodeInput = document.getElementById("room-code-input");
 const btnJoinCode = document.getElementById("btn-join-code");
@@ -509,10 +544,201 @@ btnQuickMatch.addEventListener("click", () => {
   socket.emit("join_lobby", { username: name, mode: selectedMode });
 });
 
+btnServerBrowser.addEventListener("click", () => {
+  const name = requireUsername();
+  if (!name) return;
+  showScreen("serverBrowser");
+  document.getElementById("room-list-container").innerHTML = '<p class="subtitle" style="margin-top: 80px;">Odalar aranıyor...</p>';
+  socket.emit("fetch_rooms");
+});
+
 btnCreateRoom.addEventListener("click", () => {
   const name = requireUsername();
   if (!name) return;
-  socket.emit("create_room", { username: name, mode: selectedMode });
+  showScreen("createRoom");
+});
+
+// ==========================================
+// YENİ: ODA OLUŞTURMA & LOBİ UI EVENTLERİ
+// ==========================================
+const selectRoomType = document.getElementById("select-room-type");
+const groupRoomCapacity = document.getElementById("group-room-capacity");
+
+const selectRoomCapacity = document.getElementById("select-room-capacity");
+
+selectRoomType.addEventListener("change", (e) => {
+  const mode = e.target.value;
+  if (mode === "1v1") {
+    groupRoomCapacity.style.display = "none";
+  } else {
+    groupRoomCapacity.style.display = "block";
+    selectRoomCapacity.innerHTML = "";
+    
+    if (mode === "league") {
+      // Lig Usulü: 2 ile 10 arası ve Sınırsız
+      for (let i = 2; i <= 10; i++) {
+        selectRoomCapacity.innerHTML += `<option value="${i}">${i} Oyuncu</option>`;
+      }
+      selectRoomCapacity.innerHTML += `<option value="99">Farketmez (Sınırsız)</option>`;
+    } else if (mode === "knockout") {
+      // Eleme Usulü: Sadece 2'nin katları
+      [4, 8, 16, 32].forEach(num => {
+        selectRoomCapacity.innerHTML += `<option value="${num}">${num} Oyuncu</option>`;
+      });
+    }
+  }
+});
+
+document.getElementById("btn-cancel-create-room").addEventListener("click", () => {
+  showScreen("login");
+});
+
+document.getElementById("btn-confirm-create-room").addEventListener("click", () => {
+  const mode = selectRoomType.value;
+  const privacy = document.getElementById("select-room-privacy").value;
+  const capacity = document.getElementById("select-room-capacity").value;
+  
+  socket.emit("create_advanced_room", { 
+    username: myUsername, 
+    gameMode: selectedMode, // country_club vb
+    roomMode: mode,         // 1v1, league, knockout
+    privacy, 
+    capacity: mode === "1v1" ? 2 : parseInt(capacity) 
+  });
+});
+
+document.getElementById("btn-back-from-browser").addEventListener("click", () => {
+  showScreen("login");
+});
+
+document.getElementById("btn-refresh-rooms").addEventListener("click", () => {
+  document.getElementById("room-list-container").innerHTML = '<p class="subtitle" style="margin-top: 80px;">Odalar aranıyor...</p>';
+  socket.emit("fetch_rooms");
+});
+
+document.getElementById("btn-leave-room").addEventListener("click", () => {
+  socket.emit("leave_advanced_room");
+  showScreen("login");
+});
+
+let currentAdvancedRoom = null;
+
+document.getElementById("btn-start-room").addEventListener("click", () => {
+  if (currentAdvancedRoom && currentAdvancedRoom.players.length < 2) {
+    alert("Oyunu başlatmak için en az 2 kişi olmalı!");
+    return;
+  }
+  socket.emit("start_advanced_room");
+});
+
+socket.on("tournament_started", (room) => {
+  currentAdvancedRoom = room;
+  showScreen("tournamentLobby");
+  
+  if (room.roomMode === "league") {
+    document.getElementById("league-standings-container").classList.remove("hidden");
+    document.getElementById("knockout-bracket-container").classList.add("hidden");
+    // Puan durumunu doldur (Başlangıçta hepsi 0)
+    const tbody = document.getElementById("league-standings-body");
+    tbody.innerHTML = "";
+    room.players.forEach((p, idx) => {
+      tbody.innerHTML += `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+          <td style="padding:10px;">${idx + 1}</td>
+          <td style="padding:10px;">${p.username} ${p.id === room.hostId ? '👑' : ''}</td>
+          <td style="padding:10px;">0</td>
+          <td style="padding:10px;">0</td>
+          <td style="padding:10px;">0</td>
+          <td style="padding:10px;">0</td>
+          <td style="padding:10px;">0</td>
+          <td style="padding:10px; font-weight:bold; color:#FFD700;">0</td>
+        </tr>
+      `;
+    });
+  } else if (room.roomMode === "knockout") {
+    document.getElementById("league-standings-container").classList.add("hidden");
+    document.getElementById("knockout-bracket-container").classList.remove("hidden");
+    document.getElementById("knockout-bracket").innerHTML = `<p class="subtitle">Eşleşmeler oluşturuluyor...</p>`;
+  }
+});
+
+// ==========================================
+// SOCKET LİSTENERS (SERVER BROWSER & LOBBY)
+// ==========================================
+socket.on("rooms_list", (rooms) => {
+  const container = document.getElementById("room-list-container");
+  container.innerHTML = "";
+  
+  if (rooms.length === 0) {
+    container.innerHTML = '<p class="subtitle" style="margin-top: 80px;">Açık oda bulunamadı. Kendi odanı kurabilirsin!</p>';
+    return;
+  }
+
+  rooms.forEach(room => {
+    const isFull = room.players.length >= room.capacity;
+    
+    let typeName = "1v1 Klasik";
+    if (room.roomMode === "league") typeName = "🏆 Lig Turnuvası";
+    if (room.roomMode === "knockout") typeName = "⚔️ Eleme Turnuvası";
+
+    const div = document.createElement("div");
+    div.style = "background: rgba(0,0,0,0.3); margin-bottom: 10px; padding: 10px; border-radius: 8px; text-align: left; display: flex; justify-content: space-between; align-items: center;";
+    
+    div.innerHTML = `
+      <div>
+        <strong style="color: #4CAF50;">${room.hostName}'in Odası</strong> <span style="font-size:12px; color:#aaa;">(${room.gameMode === 'country_club' ? 'Ülke+Kulüp' : 'Kulüp+Kulüp'})</span><br>
+        <span style="font-size: 14px;">${typeName}</span><br>
+        <span style="font-size: 12px; color: ${isFull ? '#ff4d4d' : '#FFD700'}">Kişi: ${room.players.length}/${room.capacity}</span>
+      </div>
+      <button class="btn-primary btn-small" ${isFull ? 'disabled' : ''} onclick="joinRoomByCode('${room.code}')">${isFull ? 'DOLU' : 'KATIL'}</button>
+    `;
+    container.appendChild(div);
+  });
+});
+
+window.joinRoomByCode = function(code) {
+  const name = requireUsername();
+  if (!name) return;
+  socket.emit("join_advanced_room", { username: name, code });
+};
+
+socket.on("room_lobby_update", (room) => {
+  currentAdvancedRoom = room;
+  showScreen("roomLobby");
+  
+  document.getElementById("lobby-room-name").textContent = `${room.hostName}'in Odası`;
+  document.getElementById("lobby-room-code").textContent = room.code;
+  
+  let typeName = "1v1 Klasik";
+  if (room.roomMode === "league") typeName = "Lig Turnuvası";
+  if (room.roomMode === "knockout") typeName = "Eleme Turnuvası";
+  
+  document.getElementById("lobby-room-desc").textContent = `${typeName} (${room.players.length}/${room.capacity} Oyuncu)`;
+  
+  const pList = document.getElementById("lobby-player-list");
+  pList.innerHTML = "";
+  
+  room.players.forEach(p => {
+    const li = document.createElement("li");
+    li.style = "padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 16px;";
+    li.innerHTML = p.id === room.hostId ? `👑 <b>${p.username}</b>` : `👤 ${p.username}`;
+    pList.appendChild(li);
+  });
+  
+  // Eğer bu kişi host ise başlat butonu görünür (en az 2 kişi lazım başlatmak için)
+  const isHost = socket.id === room.hostId;
+  const btnStart = document.getElementById("btn-start-room");
+  const waitMsg = document.getElementById("lobby-waiting-host");
+  
+  if (isHost) {
+    btnStart.classList.remove("hidden");
+    waitMsg.classList.add("hidden");
+    btnStart.disabled = room.players.length < 2; 
+    btnStart.textContent = room.players.length < 2 ? "⏳ BEKLENİYOR..." : "🚀 OYUNU BAŞLAT";
+  } else {
+    btnStart.classList.add("hidden");
+    waitMsg.classList.remove("hidden");
+  }
 });
 
 btnJoinCode.addEventListener("click", () => {

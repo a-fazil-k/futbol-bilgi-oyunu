@@ -45,11 +45,14 @@
     </form>
     
     <div class="divider"><span>veya</span></div>
-    <button type="button" id="btn-google-login" class="btn-google">
+    <button type="button" id="btn-google-login" class="btn-google" style="margin-bottom:10px;">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <path fill-rule="evenodd" clip-rule="evenodd" d="M15.7034 7.91133C14.7554 7.02509 13.4903 6.54228 12.1813 6.56212C9.78605 6.56212 7.75176 8.14611 7.02642 10.279V10.2791C6.64183 11.3968 6.64183 12.6071 7.02642 13.7249H7.02979C7.75849 15.8545 9.78941 17.4385 12.1847 17.4385C13.4211 17.4385 14.4826 17.1285 15.3053 16.5809V16.5787C16.2735 15.9504 16.9348 14.9616 17.1406 13.8439H12.1813V10.3783H20.8414C20.9494 10.9802 21 11.5952 21 12.207C21 14.9443 20.002 17.2586 18.2655 18.826L18.2673 18.8274C16.7458 20.203 14.6576 21 12.1813 21C8.70985 21 5.53527 19.082 3.97666 16.043V16.043C2.67445 13.5 2.67445 10.5039 3.97666 7.96096H3.97668L3.97666 7.96094C5.53527 4.9186 8.70985 3.00061 12.1813 3.00061C14.4619 2.97415 16.6649 3.8141 18.3247 5.34188L15.7034 7.91133Z" fill="#C4C6D7"/>
       </svg>
-      <span>Sign in with Google</span>
+      <span>Google ile Giriş Yap</span>
+    </button>
+    <button type="button" id="btn-guest-login" class="btn-secondary" style="border:1px solid #C4C6D7; color: white;">
+      👤 Hesap Açmadan Misafir Olarak Oyna
     </button>
 
     <p id="auth-error" class="error-text"></p>
@@ -130,7 +133,8 @@
       </button>
     </div>
 
-    <button id="btn-quick-match" class="btn-primary">⚡ HIZLI EŞLEŞ</button>
+    <button id="btn-quick-match" class="btn-primary">⚡ HIZLI EŞLEŞ (1v1)</button>
+    <button id="btn-server-browser" class="btn-primary" style="margin-top:10px; background:#4CAF50;">🌐 ODA & TURNUVA LİSTESİ</button>
 
     <div class="divider"><span>veya</span></div>
 
@@ -143,6 +147,129 @@
 
     <p id="login-error" class="error-text"></p>
     <button type="button" id="btn-logout" class="btn-link" style="margin-top:10px;">🚪 Oturumu Kapat</button>
+  </div>
+</section>
+
+<!-- ============ EKRAN 1.1: ODA OLUŞTURMA ============ -->
+<section id="screen-create-room" class="screen">
+  <div class="card login-card">
+    <h2>🔑 Oda Oluştur</h2>
+    <p class="subtitle">Oyun modunu ve kuralları belirle.</p>
+    
+    <div class="form-group" style="text-align: left; margin-bottom: 10px;">
+      <label>Oyun Modu:</label>
+      <select id="select-room-type" class="code-digit" style="width: 100%; height: 40px; border-radius: 5px; font-size: 16px;">
+        <option value="1v1">1v1 Klasik</option>
+        <option value="league">🏆 Lig Usulü Turnuva</option>
+        <option value="knockout">⚔️ Eleme Usulü Turnuva</option>
+      </select>
+    </div>
+
+    <div class="form-group" style="text-align: left; margin-bottom: 10px;">
+      <label>Gizlilik:</label>
+      <select id="select-room-privacy" class="code-digit" style="width: 100%; height: 40px; border-radius: 5px; font-size: 16px;">
+        <option value="public">Açık (Oda Listesinde Görünür)</option>
+        <option value="private">Gizli (Sadece Kod İle)</option>
+      </select>
+    </div>
+
+    <div class="form-group" id="group-room-capacity" style="text-align: left; margin-bottom: 10px; display: none;">
+      <label>Kişi Sınırı:</label>
+      <select id="select-room-capacity" class="code-digit" style="width: 100%; height: 40px; border-radius: 5px; font-size: 16px;">
+        <option value="4">4 Oyuncu</option>
+        <option value="8">8 Oyuncu</option>
+        <option value="16">16 Oyuncu</option>
+        <option value="32">32 Oyuncu</option>
+      </select>
+    </div>
+
+    <button id="btn-confirm-create-room" class="btn-primary" style="margin-top: 15px;">ODAYI KUR</button>
+    <button id="btn-cancel-create-room" class="btn-secondary" style="margin-top: 10px;">İPTAL</button>
+  </div>
+</section>
+
+<!-- ============ EKRAN 1.2: ODA LİSTESİ (SERVER BROWSER) ============ -->
+<section id="screen-server-browser" class="screen">
+  <div class="card" style="max-width: 600px; width: 90%;">
+    <h2>🌐 Oda Listesi</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+      <button id="btn-refresh-rooms" class="btn-secondary btn-small">🔄 Yenile</button>
+      <button id="btn-back-from-browser" class="btn-link">Geri Dön</button>
+    </div>
+    
+    <div id="room-list-container" style="background: rgba(255,255,255,0.05); border-radius: 10px; min-height: 200px; max-height: 400px; overflow-y: auto; padding: 10px;">
+      <p class="subtitle" style="margin-top: 80px;">Odalar aranıyor...</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ EKRAN 1.3: ODA LOBİSİ (ÇOK OYUNCULU) ============ -->
+<section id="screen-room-lobby" class="screen">
+  <div class="card" style="max-width: 500px; width: 90%;">
+    <h2 id="lobby-room-name">Oda: XXXXXX</h2>
+    <p class="subtitle" id="lobby-room-desc">Lig Turnuvası (0/8 Oyuncu)</p>
+    
+    <div class="room-code-display" style="font-size: 20px; padding: 10px; margin-bottom: 15px;">
+      Oda Kodu: <b id="lobby-room-code">------</b>
+    </div>
+
+    <div style="text-align: left; margin-bottom: 5px;"><b>Oyuncular:</b></div>
+    <ul id="lobby-player-list" style="list-style: none; padding: 0; margin: 0 0 20px 0; background: rgba(0,0,0,0.2); border-radius: 10px; min-height: 150px; max-height: 250px; overflow-y: auto;">
+      <!-- Oyuncular buraya gelecek -->
+    </ul>
+
+    <button id="btn-start-room" class="btn-primary hidden">🚀 OYUNU BAŞLAT</button>
+    <p id="lobby-waiting-host" class="subtitle hidden">Kurucunun oyunu başlatması bekleniyor...</p>
+    <button id="btn-leave-room" class="btn-secondary" style="margin-top: 10px;">Odadan Çık</button>
+  </div>
+</section>
+
+<!-- ============ EKRAN 1.4: TURNUVA LOBİSİ (AĞAÇ / PUAN DURUMU) ============ -->
+<section id="screen-tournament-lobby" class="screen">
+  <div class="card" style="max-width: 700px; width: 95%;">
+    <h2 id="tournament-title">🏆 Turnuva Başlıyor!</h2>
+    <p class="subtitle" id="tournament-subtitle">Fikstür oluşturuluyor...</p>
+
+    <!-- LİG USULÜ İÇİN PUAN DURUMU -->
+    <div id="league-standings-container" class="hidden" style="margin-bottom: 20px;">
+      <h3 style="color:#39ff6a; margin-bottom: 10px;">Puan Durumu</h3>
+      <div style="overflow-x: auto;">
+        <table class="scoreboard" style="width:100%; text-align:left; border-collapse:collapse; background:rgba(0,0,0,0.3); border-radius:10px; overflow:hidden;">
+          <thead>
+            <tr style="background:rgba(255,255,255,0.1);">
+              <th style="padding:10px;">Sıra</th>
+              <th style="padding:10px;">Oyuncu</th>
+              <th style="padding:10px;">O</th>
+              <th style="padding:10px;">G</th>
+              <th style="padding:10px;">B</th>
+              <th style="padding:10px;">M</th>
+              <th style="padding:10px;">Av</th>
+              <th style="padding:10px;">Puan</th>
+            </tr>
+          </thead>
+          <tbody id="league-standings-body">
+            <!-- JS ile doldurulacak -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ELEME USULÜ İÇİN AĞAÇ -->
+    <div id="knockout-bracket-container" class="hidden" style="margin-bottom: 20px; overflow-x: auto;">
+      <h3 style="color:#39ff6a; margin-bottom: 10px;">Turnuva Ağacı</h3>
+      <div id="knockout-bracket" style="display:flex; justify-content:center; gap:20px; min-width:400px; padding:10px;">
+        <!-- JS ile doldurulacak -->
+      </div>
+    </div>
+
+    <!-- GELECEK MAÇ BİLGİSİ -->
+    <div id="next-match-info" style="background:#1a231b; border:1px solid #39ff6a; border-radius:10px; padding:15px; margin-bottom:15px;">
+      <h3 style="margin-top:0;">Sıradaki Maç:</h3>
+      <div id="match-players" style="font-size:20px; font-weight:bold;">Yükleniyor...</div>
+      <p id="match-status" style="margin-bottom:0; color:#8ba591;">Oynanması Bekleniyor</p>
+    </div>
+
+    <button id="btn-tournament-action" class="btn-primary hidden">⚔️ MAÇA GİR</button>
   </div>
 </section>
 

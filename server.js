@@ -231,19 +231,69 @@ const MODES = ["country_club", "club_club"];
 let waitingQueues = { country_club: [], club_club: [] }; // mode -> [{socketId, username}]
 const rooms = new Map(); // roomId -> room state
 const pendingCodeRooms = new Map(); // code -> {code, hostSocketId, hostUsername, mode}
+const advancedRooms = new Map(); // code -> { code, hostId, hostName, roomMode, gameMode, privacy, capacity, status, players }
 
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // karisikligi onlemek icin 0/O/1/I/L yok
 function generateRoomCode() {
   let code;
   do {
-    code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
-  } while (pendingCodeRooms.has(code));
+    code = Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
+  } while (pendingCodeRooms.has(code) || advancedRooms.has(code));
   return code;
 }
 
 function makeRoomId() {
   return "room_" + Math.random().toString(36).slice(2, 9);
 }
+
+// --- Gelişmiş Odalar (Turnuva/Lobi) Yardımcı Fonksiyonları ---
+function getPublicRooms() {
+  const list = [];
+  for (const [code, room] of advancedRooms.entries()) {
+    if (room.privacy === "public" && room.status === "waiting") {
+      list.push({
+        code,
+        hostName: room.hostName,
+        gameMode: room.gameMode,
+        roomMode: room.roomMode,
+        capacity: room.capacity,
+        players: room.players.map(p => ({ id: p.id, username: p.username }))
+      });
+    }
+  }
+  return list;
+}
+
+function broadcastRoomsList() {
+  io.emit("rooms_list", getPublicRooms());
+}
+
+function handleLeaveAdvancedRoom(socket) {
+  const code = socket.data.advancedRoomCode;
+  if (!code) return;
+  const room = advancedRooms.get(code);
+  if (!room) return;
+
+  room.players = room.players.filter(p => p.id !== socket.id);
+  socket.leave(code);
+  delete socket.data.advancedRoomCode;
+
+  if (room.players.length === 0) {
+    advancedRooms.delete(code);
+  } else if (room.hostId === socket.id && room.status === "waiting") {
+    // Odayı kuran kişi çıkarsa, sıradaki ilk kişiyi host yap (sadece bekleme odasında)
+    room.hostId = room.players[0].id;
+    room.hostName = room.players[0].username;
+    io.to(code).emit("room_lobby_update", room);
+  } else if (room.status === "waiting") {
+    io.to(code).emit("room_lobby_update", room);
+  }
+  
+  if (room.status === "waiting") {
+    broadcastRoomsList();
+  }
+}
+// -----------------------------------------------------------
 
 function tryMatchmake(mode) {
   const queue = waitingQueues[mode];
@@ -591,6 +641,96 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("create_advanced_room", ({ username, gameMode, roomMode, privacy, capacity }) => {
+    try {
+      const cleanName = (username || "").toString().trim().slice(0, 20);
+      if (!cleanName) return;
+
+      const code = generateRoomCode();
+      const newRoom = {
+        code,
+        hostId: socket.id,
+        hostName: cleanName,
+        gameMode: MODES.includes(gameMode) ? gameMode : "country_club",
+        roomMode, // "1v1", "league", "knockout"
+        privacy, // "public", "private"
+        capacity: roomMode === "1v1" ? 2 : parseInt(capacity) || 2,
+        status: "waiting", // waiting, playing, finished
+        players: [{ id: socket.id, username: cleanName, score: 0 }]
+      };
+
+      advancedRooms.set(code, newRoom);
+      socket.join(code);
+      socket.data.advancedRoomCode = code;
+      socket.data.username = cleanName;
+      
+      socket.emit("room_lobby_update", newRoom);
+      if (privacy === "public") broadcastRoomsList();
+    } catch (e) {
+      console.error("[create_advanced_room]", e);
+    }
+  });
+
+  socket.on("join_advanced_room", ({ username, code }) => {
+    try {
+      const cleanName = (username || "").toString().trim().slice(0, 20);
+      const cleanCode = (code || "").toString().trim().toUpperCase();
+      const room = advancedRooms.get(cleanCode);
+
+      if (!room || room.status !== "waiting") {
+        socket.emit("room_join_error", { reason: "not_found_or_started" });
+        return;
+      }
+      if (room.players.length >= room.capacity) {
+        socket.emit("room_join_error", { reason: "full" });
+        return;
+      }
+      if (room.players.find(p => p.id === socket.id)) return;
+
+      room.players.push({ id: socket.id, username: cleanName, score: 0 });
+      socket.join(cleanCode);
+      socket.data.advancedRoomCode = cleanCode;
+      socket.data.username = cleanName;
+
+      io.to(cleanCode).emit("room_lobby_update", room);
+      if (room.privacy === "public") broadcastRoomsList();
+    } catch (e) {
+      console.error("[join_advanced_room]", e);
+    }
+  });
+
+  socket.on("leave_advanced_room", () => {
+    handleLeaveAdvancedRoom(socket);
+  });
+
+  socket.on("fetch_rooms", () => {
+    socket.emit("rooms_list", getPublicRooms());
+  });
+
+  socket.on("start_advanced_room", () => {
+    const code = socket.data.advancedRoomCode;
+    if (!code) return;
+    const room = advancedRooms.get(code);
+    if (!room || room.hostId !== socket.id) return;
+    if (room.players.length < 2) return;
+
+    room.status = "playing";
+    if (room.privacy === "public") broadcastRoomsList();
+    
+    // Şimdilik 1v1 modunu klasik eski oyuna bağlıyoruz.
+    if (room.roomMode === "1v1") {
+      createRoom(
+        { socketId: room.players[0].id, username: room.players[0].username },
+        { socketId: room.players[1].id, username: room.players[1].username },
+        room.gameMode
+      );
+      advancedRooms.delete(code);
+    } else {
+      // Todo: Aşama 3 ve 4, turnuva mantığı.
+      io.to(code).emit("tournament_started", room);
+    }
+  });
+
   socket.on("search_club", ({ query }, cb) => {
     try {
       cb(searchClubs((query || "").toString()));
@@ -697,6 +837,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     handlePlayerLeft(socket.id);
+    handleLeaveAdvancedRoom(socket);
   });
 });
 
