@@ -18,6 +18,7 @@ from pathlib import Path
 import sqlite3
 import sys
 import threading
+from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -52,6 +53,12 @@ DEFAULT_OUTPUT_FILE = (
 )
 DEFAULT_CACHE_FILE = PROJECT_ROOT / ".cache" / "transfermarkt-league-players.sqlite3"
 _thread_local = threading.local()
+PLAYER_NAME_OVERRIDES = {
+    "32966": "Ângelo",
+    "37429": "Sandro Mendonça",
+    "58385": "Beto Cachoeira",
+    "726526": "Stefan Mitrović",
+}
 
 
 def _session() -> requests.Session:
@@ -202,7 +209,9 @@ def _fetch_club_roster(club_id: str, season: int) -> tuple[str, int, dict[str, s
         if player_id and name:
             players[player_id] = name
 
-    if not 10 <= len(players) <= 100:
+    # Historical and not-yet-populated season pages can legitimately contain
+    # only a few players or no roster data at all.
+    if len(players) > 100:
         raise ValueError(
             f"Unexpected player count for club {club_id}, season {season}: {len(players)}"
         )
@@ -268,10 +277,12 @@ def _load_rosters(
 def _build_output(
     club_seasons: dict[tuple[str, int], str],
     rosters: dict[tuple[str, int], dict[str, str]],
+    player_countries: Optional[dict[str, Optional[str]]] = None,
 ) -> list[dict]:
     players = {}
     for key, club_name in club_seasons.items():
         for player_id, player_name in rosters.get(key, {}).items():
+            player_name = PLAYER_NAME_OVERRIDES.get(player_id, player_name)
             player = players.setdefault(
                 player_id,
                 {"player_name": player_name, "clubs_played": set()},
@@ -279,13 +290,15 @@ def _build_output(
             player["player_name"] = player_name
             player["clubs_played"].add(club_name)
 
-    output = [
-        {
+    output = []
+    for player_id, player in players.items():
+        record = {
             "player_name": player["player_name"],
             "clubs_played": sorted(player["clubs_played"], key=str.casefold),
         }
-        for player in players.values()
-    ]
+        if player_countries is not None:
+            record["country"] = player_countries.get(player_id)
+        output.append(record)
     output.sort(key=lambda player: player["player_name"].casefold())
     return output
 
