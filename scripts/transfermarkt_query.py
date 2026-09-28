@@ -12,6 +12,7 @@ Examples:
     python scripts/transfermarkt_query.py leagues
     python scripts/transfermarkt_query.py league "Süper Lig" --start-season 2017 --end-season 2026
     python scripts/transfermarkt_query.py big-five --start-season 1997 --end-season 2026
+    python scripts/transfermarkt_query.py all-leagues --start-season 1997 --end-season 2026
 """
 
 import argparse
@@ -279,7 +280,7 @@ def _get_league_history(competition_id: str, start_season: int, end_season: int)
             clubs_by_id.update(get_competition_clubs(competition_id, season, client))
     finally:
         client.close()
-    return sorted(clubs_by_id.values(), key=str.casefold)
+    return sorted(set(clubs_by_id.values()), key=str.casefold)
 
 
 def get_league_clubs(league_name: str, start_season: int, end_season: int) -> dict[str, list[str]]:
@@ -291,15 +292,14 @@ def get_league_clubs(league_name: str, start_season: int, end_season: int) -> di
     return {canonical_name: clubs}
 
 
-def get_big_five_clubs(start_season: int, end_season: int) -> dict[str, list[str]]:
-    """Return unique clubs from the Big Five leagues over an inclusive season range."""
+def _get_multiple_league_histories(
+    leagues: dict[str, str], start_season: int, end_season: int
+) -> dict[str, list[str]]:
     if start_season > end_season:
         raise ValueError("start_season cannot be later than end_season")
 
-    league_catalog = load_leagues()
-    leagues = {name: league_catalog[name] for name in BIG_FIVE_LEAGUE_NAMES}
     results = {}
-    with ThreadPoolExecutor(max_workers=len(leagues)) as executor:
+    with ThreadPoolExecutor(max_workers=min(5, len(leagues))) as executor:
         futures = {
             executor.submit(_get_league_history, competition_id, start_season, end_season): league_name
             for league_name, competition_id in leagues.items()
@@ -310,6 +310,18 @@ def get_big_five_clubs(start_season: int, end_season: int) -> dict[str, list[str
             print(f"{league_name}: {len(results[league_name])} clubs", file=sys.stderr)
 
     return {league_name: results[league_name] for league_name in leagues}
+
+
+def get_big_five_clubs(start_season: int, end_season: int) -> dict[str, list[str]]:
+    """Return unique clubs from the Big Five leagues over an inclusive season range."""
+    league_catalog = load_leagues()
+    leagues = {name: league_catalog[name] for name in BIG_FIVE_LEAGUE_NAMES}
+    return _get_multiple_league_histories(leagues, start_season, end_season)
+
+
+def get_all_leagues_clubs(start_season: int, end_season: int) -> dict[str, list[str]]:
+    """Return unique clubs for every league in the JSON catalog."""
+    return _get_multiple_league_histories(load_leagues(), start_season, end_season)
 
 
 def main() -> None:
@@ -340,6 +352,13 @@ def main() -> None:
     big_five.add_argument("--end-season", type=int, default=2026)
     big_five.add_argument("--output", help="Write JSON to this file instead of stdout")
 
+    all_leagues = commands.add_parser(
+        "all-leagues", help="Get clubs for every league in the JSON catalog"
+    )
+    all_leagues.add_argument("--start-season", type=int, default=1997)
+    all_leagues.add_argument("--end-season", type=int, default=2026)
+    all_leagues.add_argument("--output", help="Write JSON to this file instead of stdout")
+
     args = parser.parse_args()
     try:
         if args.command == "search-player":
@@ -352,8 +371,10 @@ def main() -> None:
             output = load_leagues()
         elif args.command == "league":
             output = get_league_clubs(args.name, args.start_season, args.end_season)
-        else:
+        elif args.command == "big-five":
             output = get_big_five_clubs(args.start_season, args.end_season)
+        else:
+            output = get_all_leagues_clubs(args.start_season, args.end_season)
 
         serialized = json.dumps(output, ensure_ascii=False, indent=2)
         if getattr(args, "output", None):
